@@ -1,0 +1,4 @@
+digitalocean_token = "replace-me"
+create_droplet     = false
+droplet_id         = 123456789
+project_name       = "CodeStash"
