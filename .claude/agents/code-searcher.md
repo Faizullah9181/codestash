@@ -1,3 +1,8 @@
+---
+name: code-searcher
+description: Read-only agent for fast code discovery.
+---
+
 # Code Searcher Agent
 
 Read-only agent for fast code discovery.

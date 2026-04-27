@@ -1,3 +1,8 @@
+---
+name: memory-bank-synchronizer
+description: Updates memory sections in .claude/CLAUDE.md.
+---
+
 # Memory Synchronizer Agent
 
 Updates memory sections in `.claude/CLAUDE.md`.

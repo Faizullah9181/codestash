@@ -1,3 +1,8 @@
+---
+name: ux-design-expert
+description: Frontend UX guidance for React applications.
+---
+
 # UX Design Expert Agent
 
 Frontend UX guidance for React applications.

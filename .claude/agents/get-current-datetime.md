@@ -1,3 +1,8 @@
+---
+name: get-current-datetime
+description: Returns current date and time with timezone.
+---
+
 # Datetime Agent
 
 Returns current date/time with timezone.

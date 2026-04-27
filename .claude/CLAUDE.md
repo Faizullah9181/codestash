@@ -1,40 +1,102 @@
 # Project Memory
 
-Instructions here apply to this project and are shared with team members.
+Shared agent instructions for the codestash-starterpack workspace.
 
-## Context
+---
 
-This is a generic full-stack starter workspace designed for reuse.
+## Stack
 
-### Architecture Overview
+| Layer | Tech | Version |
+|-------|------|---------|
+| Backend | FastAPI + SQLAlchemy (async) + asyncpg | Python ≥ 3.12 |
+| Database | PostgreSQL 16 | via Docker |
+| Frontend | React 19 + TypeScript 5.6 + Vite 6 | Node LTS |
+| Infra | Terraform ≥ 1.6 + DigitalOcean provider ~> 2.68 | |
+| Package mgr | `uv` (backend), `npm` (frontend) | |
+| Linting | `ruff` (backend), `eslint` (frontend) | |
 
-| Area | Stack | Purpose |
-|------|-------|---------|
-| Backend | FastAPI + SQLAlchemy async | HTTP APIs and business logic |
-| Frontend | React + TypeScript + Vite | Web application UI |
-| Infra | Terraform | Cloud provisioning templates |
-| CI/CD | GitHub Actions | Build, test, and validation pipelines |
+---
 
-### Key Patterns
+## Project Layout
 
-1. API-first backend design
-2. Type-safe frontend contracts
-3. Environment-based configuration
-4. Containerized local development
-5. Infrastructure as code via modules
+```
+backend/
+  app/
+    main.py          # FastAPI app, CORS, lifespan, /health
+    config.py        # pydantic-settings — reads from .env
+    api/routes.py    # APIRouter mounted at /api
+    db/              # empty — add models + session here
+  Makefile           # install | dev | test | lint
+  pyproject.toml
 
-### Build Commands
+frontend/
+  src/
+    lib/api.ts       # typed fetch helpers (apiGet<T>)
+    App.tsx
+    components/      # add shared UI here
+  vite.config.ts
 
-- Backend install: `cd backend && uv sync`
-- Backend run: `cd backend && make dev`
-- Frontend install: `cd frontend && npm install`
-- Frontend run: `cd frontend && npm run dev`
-- Full stack: `docker compose up --build`
+terraform/
+  main.tf            # root — feature-flagged module calls + locals
+  variables.tf       # create_* bools + resource config vars
+  outputs.tf
+  versions.tf        # required_version >= 1.6.0, DO ~> 2.68
+  modules/
+    droplet/         # digitalocean_droplet.this
+    firewall/        # digitalocean_firewall.this
+    project/         # digitalocean_project.this (groups URNs)
 
-## Active Context
+.claude/
+  CLAUDE.md          # this file
+  skills/
+    terraform-resource-creator/   # generic Terraform skill v2.0.0
+    skill-writer/
+    skill.update.py  # list | check | bump <skill> | sync
+```
 
-<!-- Current session context -->
+---
 
-## Recent Changes
+## Dev Commands
 
-<!-- Important project changes -->
+```bash
+# Backend
+cd backend && uv sync           # install deps
+cd backend && make dev          # uvicorn on :8000 with --reload
+cd backend && make test         # pytest -q
+cd backend && make lint         # ruff check
+
+# Frontend
+cd frontend && npm install
+cd frontend && npm run dev      # vite on :5173
+cd frontend && npm run build    # tsc + vite build
+cd frontend && npm run lint
+
+# Full stack (Docker)
+docker compose up --build       # db :5432, backend :8000, frontend :5173
+```
+
+---
+
+## Key Conventions
+
+**Backend**
+- Settings live in `app/config.py` (`pydantic-settings`). All env vars go there — never read `os.environ` directly.
+- Default DB URL: `postgresql+asyncpg://codestash:codestash@localhost:5432/codestash`
+- CORS origins controlled by `CORS_ORIGINS` env var (comma-separated).
+- All routes go under `/api` via `app/api/routes.py`. Register new routers with `router.include_router(...)`.
+- DB session + models go in `app/db/` (currently empty — scaffold there).
+
+**Frontend**
+- API calls use `apiGet<T>(path)` from `src/lib/api.ts`. Add `apiPost`, `apiPut`, etc. in the same file.
+- In dev, all `/api/*` requests proxy to `:8000` (configured in `vite.config.ts`). In prod, set `VITE_API_URL`.
+- Components go in `src/components/`.
+
+**Terraform**
+- Every resource is feature-flagged: `create_<name>` bool in `variables.tf`, `count = var.create_<name> ? 1 : 0` in module call.
+- Every module emits `id` + `urn` outputs minimum. URNs collected in `local.resources` for DO project assignment.
+- Naming: module dirs `lowercase-hyphens`, resource label `this` for singletons.
+- Use the `terraform-resource-creator` skill when adding or wiring new resources.
+
+**Skills**
+- Run `python .claude/skills/skill.update.py check` to validate skill frontmatter.
+- Run `python .claude/skills/skill.update.py list` to see all skills + versions.

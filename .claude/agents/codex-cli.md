@@ -1,3 +1,8 @@
+---
+name: codex-cli
+description: Autonomous coding agent for implementation tasks.
+---
+
 # Codex CLI Agent
 
 Autonomous coding agent for implementation tasks.
