@@ -1,23 +1,18 @@
-import { useEffect, useState } from "react";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
 
-import { apiGet } from "./lib/api";
+import { Layout } from "./components/Layout";
+import { Home } from "./pages/Home";
+import { Items } from "./pages/Items";
 
 export default function App() {
-  const [status, setStatus] = useState("checking...");
-
-  useEffect(() => {
-    apiGet<{ service: string; status: string }>("/api/status")
-      .then((data) => setStatus(`${data.service}: ${data.status}`))
-      .catch(() => setStatus("backend unreachable"));
-  }, []);
-
   return (
-    <main className="app-shell">
-      <section className="card">
-        <h1>CodeStash Starterpack</h1>
-        <p>Reusable frontend + backend + terraform + actions base.</p>
-        <p><strong>API:</strong> {status}</p>
-      </section>
-    </main>
+    <BrowserRouter>
+      <Routes>
+        <Route element={<Layout />}>
+          <Route path="/" element={<Home />} />
+          <Route path="/items" element={<Items />} />
+        </Route>
+      </Routes>
+    </BrowserRouter>
   );
 }

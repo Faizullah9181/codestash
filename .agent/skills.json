@@ -1,0 +1,26 @@
+[
+    {
+        "source": "https://github.com/fastapi/fastapi/tree/master/fastapi/.agents/skills/fastapi",
+        "slug": "fastapi/fastapi",
+        "name": "FastAPI Agent Skill",
+        "description": "A skill for building agents using FastAPI."
+    },
+    {
+        "source": "https://github.com/agentscope-ai/agentscope/tree/main/examples/agent/a2ui_agent/samples/general_agent/skills/A2UI_response_generator",
+        "slug": "agentscope-ai/agentscope",
+        "name": "A2UI Response Generator Skill",
+        "description": "A skill that generates responses for the A2UI agent."
+    },
+    {
+        "source": "https://github.com/nextlevelbuilder/ui-ux-pro-max-skill/tree/main/.claude/skills/ui-ux-pro-max",
+        "slug": "nextlevelbuilder/ui-ux-pro-max",
+        "name": "UI/UX Pro Max Skill",
+        "description": "A skill for enhancing UI/UX design capabilities."
+    },
+    {
+        "source": "https://github.com/sickn33/antigravity-awesome-skills/tree/main/plugins/antigravity-awesome-skills-claude/skills/readme",
+        "slug": "sickn33/antigravity-awesome-skills",
+        "name": "Readme Generator Skill",
+        "description": "A skill that generates README files for various projects."
+    }
+]

@@ -24,16 +24,39 @@ backend/
   app/
     main.py          # FastAPI app, CORS, lifespan, /health
     config.py        # pydantic-settings — reads from .env
-    api/routes.py    # APIRouter mounted at /api
-    db/              # empty — add models + session here
+    api/
+      health.py        # /api/status + /api/health
+      items.py         # example controller (thin HTTP layer)
+      crud.py          # (legacy) generic CRUD helper — prefer repository/service pattern
+      schemas.py       # Pydantic base schemas + PaginatedResponse
+    db/
+      connection.py    # async engine, session maker, get_db dependency
+      models.py        # SQLAlchemy Base + models (Item, etc.)
+    repositories/
+      base.py          # BaseRepository — paginated list, get, create, update, delete
+      item_repository.py  # Item-specific data access (extends BaseRepository)
+    services/
+      item_service.py  # Item business logic (controller → service → repository → model)
   Makefile           # install | dev | test | lint
   pyproject.toml
 
 frontend/
   src/
-    lib/api.ts       # typed fetch helpers (apiGet<T>)
-    App.tsx
-    components/      # add shared UI here
+    lib/api.ts       # typed fetch helpers (apiGet/Post/Put/Patch/Delete)
+    hooks/
+      useApi.ts       # fetch-once hook with loading/error/refetch
+      usePaginatedApi.ts  # auto-loading paginated list hook
+    components/
+      Layout.tsx      # sidebar + content shell
+      StatusStates.tsx  # LoadingSpinner, ErrorBox, EmptyState, LoadMoreButton
+      ErrorBoundary.tsx  # React error boundary with retry
+      Form.tsx        # FormInput, FormSelect, FormTextarea, FormCheckbox
+    pages/
+      Home.tsx        # dashboard with system status
+      Items.tsx       # full CRUD example with search + create/edit modals
+    App.tsx           # BrowserRouter + routes
+    main.tsx          # React root
+    index.css         # design tokens + utility classes
   vite.config.ts
 
 terraform/
@@ -94,13 +117,24 @@ docker compose up --build       # db :5432, backend :8000, frontend :5173
 - Settings live in `app/config.py` (`pydantic-settings`). All env vars go there — never read `os.environ` directly.
 - Default DB URL: `postgresql+asyncpg://codestash:codestash@localhost:5432/codestash`
 - CORS origins controlled by `CORS_ORIGINS` env var (comma-separated).
-- All routes go under `/api` via `app/api/routes.py`. Register new routers with `router.include_router(...)`.
-- DB session + models go in `app/db/` (currently empty — scaffold there).
+- All routes go under `/api` via FastAPI routers. Register new ones in `app/main.py`.
+- DB session via `get_db` dependency. Models inherit from `app.db.models.Base` (gives id + timestamps).
+- **Architecture: Controller → Service → Repository → Model**
+  - `app/api/*.py` — thin controllers: validate request, call service, return response
+  - `app/services/*.py` — business logic: transforms, rules, orchestration
+  - `app/repositories/*.py` — data access: all SQLAlchemy queries go here
+  - `app/db/models.py` — SQLAlchemy models only
+- Pydantic schemas in `app/api/schemas.py` — inherit `SchemaBase` for responses, `CreateBase`/`UpdateBase` for requests.
+- Controllers use dependency injection (`Depends(get_db)`) and call service singletons.
 
 **Frontend**
-- API calls use `apiGet<T>(path)` from `src/lib/api.ts`. Add `apiPost`, `apiPut`, etc. in the same file.
+- API calls use typed helpers from `src/lib/api.ts`: `apiGet<T>`, `apiPost<T>`, `apiPut<T>`, `apiPatch<T>`, `apiDelete<T>`.
+- Pagination hook: `usePaginatedApi<T>(fetcher, deps)`. Single-fetch hook: `useApi<T>(fetcher, deps)`.
+- UI components: `Layout`, `LoadingSpinner`, `ErrorBox`, `EmptyState`, `LoadMoreButton`, `ErrorBoundary`.
+- Form components: `FormInput`, `FormSelect`, `FormTextarea`, `FormCheckbox`.
+- Design tokens defined in `index.css` under `:root` — use `var(--accent)`, `var(--card)`, etc.
 - In dev, all `/api/*` requests proxy to `:8000` (configured in `vite.config.ts`). In prod, set `VITE_API_URL`.
-- Components go in `src/components/`.
+- `@/` path alias is configured (e.g., `import { useApi } from "@/hooks"`)
 
 **Terraform**
 - Every resource is feature-flagged: `create_<name>` bool in `variables.tf`, `count = var.create_<name> ? 1 : 0` in module call.
