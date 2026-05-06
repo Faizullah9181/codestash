@@ -32,6 +32,7 @@ REQUIRED_FRONTMATTER_KEYS = {"name", "description"}
 
 # ── helpers ──────────────────────────────────────────────────────────────────
 
+
 def _parse_frontmatter(text: str) -> dict[str, str]:
     """Return key→value dict for the first YAML frontmatter block, or {}."""
     lines = text.splitlines()
@@ -59,6 +60,7 @@ def _skill_md(skill_dir: Path) -> Path:
 
 # ── network helpers ────────────────────────────────────────────────────────────
 
+
 def _fetch_url(url: str, timeout: int = 15) -> str:
     """Fetch a URL and return the response body as text."""
     req = urllib.request.Request(url, headers={"User-Agent": "skill.update.py/1.0"})
@@ -66,7 +68,9 @@ def _fetch_url(url: str, timeout: int = 15) -> str:
         return resp.read().decode("utf-8")
 
 
-def _github_url_to_raw(github_url: str, filepath: str = "SKILL.md", branch: str = "master") -> str:
+def _github_url_to_raw(
+    github_url: str, filepath: str = "SKILL.md", branch: str = "master"
+) -> str:
     """Convert a GitHub tree URL to a raw.githubusercontent.com URL.
 
     Handles these formats:
@@ -139,7 +143,9 @@ def _get_default_branch(owner: str, repo: str) -> str:
         return "main"
 
 
-def _download_skill(github_url: str, skill_name: str | None = None, description: str | None = None) -> int:
+def _download_skill(
+    github_url: str, skill_name: str | None = None, description: str | None = None
+) -> int:
     """Download a SKILL.md (and references/) from a GitHub skill directory.
 
     Args:
@@ -167,7 +173,7 @@ def _download_skill(github_url: str, skill_name: str | None = None, description:
 
     if len(path_parts) < 5 or path_parts[2] not in ("tree", "blob"):
         print(f"  Error: invalid GitHub URL format: {github_url}")
-        print(f"  Expected: https://github.com/owner/repo/tree/branch/path/to/skill")
+        print("  Expected: https://github.com/owner/repo/tree/branch/path/to/skill")
         return 1
 
     owner = path_parts[0]
@@ -180,7 +186,7 @@ def _download_skill(github_url: str, skill_name: str | None = None, description:
 
     # 1. Download SKILL.md
     skill_md_url = f"https://raw.githubusercontent.com/{owner}/{repo}/{ref}/{skill_subdir}/SKILL.md"
-    print(f"    fetching SKILL.md...")
+    print("    fetching SKILL.md...")
     try:
         content = _fetch_url(skill_md_url)
     except (urllib.error.HTTPError, urllib.error.URLError) as e:
@@ -194,7 +200,9 @@ def _download_skill(github_url: str, skill_name: str | None = None, description:
         if description:
             fm_lines.append(f"description: {description}")
         else:
-            fm_lines.append(f"description: {skill_name} skill imported from {owner}/{repo}")
+            fm_lines.append(
+                f"description: {skill_name} skill imported from {owner}/{repo}"
+            )
         fm_lines.append("---")
         content = "\n".join(fm_lines) + "\n\n" + content
     else:
@@ -210,7 +218,9 @@ def _download_skill(github_url: str, skill_name: str | None = None, description:
         if description and "description" not in fm:
             # Inject description
             name_line = f"name: {skill_name}\n"
-            content = content.replace(name_line, f"{name_line}description: {description}\n", 1)
+            content = content.replace(
+                name_line, f"{name_line}description: {description}\n", 1
+            )
 
     (skill_dir / "SKILL.md").write_text(content)
     print(f"    ✓ wrote {skill_dir / 'SKILL.md'}")
@@ -224,7 +234,9 @@ def _download_skill(github_url: str, skill_name: str | None = None, description:
             refs_dir = skill_dir / "references"
             refs_dir.mkdir(exist_ok=True)
             for entry in refs_json:
-                if entry.get("type") == "file" and entry.get("name", "").endswith(".md"):
+                if entry.get("type") == "file" and entry.get("name", "").endswith(
+                    ".md"
+                ):
                     ref_name = entry["name"]
                     ref_url = entry["download_url"]
                     print(f"    fetching references/{ref_name}...")
@@ -246,6 +258,7 @@ def _download_skill(github_url: str, skill_name: str | None = None, description:
 
 # ── commands ─────────────────────────────────────────────────────────────────
 
+
 def cmd_list() -> None:
     """Print a table of skill name, version, and file path."""
     dirs = _skill_dirs()
@@ -257,14 +270,18 @@ def cmd_list() -> None:
     for d in dirs:
         md = _skill_md(d)
         if not md.exists():
-            rows.append((d.name, "(no SKILL.md)", str(md.relative_to(SKILLS_DIR.parent))))
+            rows.append(
+                (d.name, "(no SKILL.md)", str(md.relative_to(SKILLS_DIR.parent)))
+            )
             continue
         fm = _parse_frontmatter(md.read_text())
         name = fm.get("name", d.name)
         version = fm.get("version", "—")
         rows.append((name, version, str(md.relative_to(SKILLS_DIR.parent))))
 
-    col_w = [max(len(r[i]) for r in rows + [("Skill", "Version", "File")]) for i in range(3)]
+    col_w = [
+        max(len(r[i]) for r in rows + [("Skill", "Version", "File")]) for i in range(3)
+    ]
     header = f"{'Skill':<{col_w[0]}}  {'Version':<{col_w[1]}}  File"
     print(header)
     print("-" * len(header))
@@ -289,7 +306,9 @@ def cmd_check() -> int:
         fm = _parse_frontmatter(md.read_text())
         missing = REQUIRED_FRONTMATTER_KEYS - fm.keys()
         if missing:
-            print(f"  FAIL     {d.name}: missing frontmatter key(s): {', '.join(sorted(missing))}")
+            print(
+                f"  FAIL     {d.name}: missing frontmatter key(s): {', '.join(sorted(missing))}"
+            )
             errors += 1
         else:
             print(f"  OK       {d.name}  (v{fm.get('version', '?')})")
@@ -333,7 +352,9 @@ def cmd_bump(skill_name: str) -> int:
 
     updated = text.replace(f"version: {current}", f"version: {new_version}", 1)
     if updated == text:
-        print(f"Warning: 'version: {current}' not found in frontmatter — no change made")
+        print(
+            f"Warning: 'version: {current}' not found in frontmatter — no change made"
+        )
         return 1
 
     md.write_text(updated)
@@ -367,7 +388,9 @@ def cmd_sync(src: str, dst: str) -> int:
     return 0
 
 
-def cmd_add(github_url: str, skill_name: str | None = None, description: str | None = None) -> int:
+def cmd_add(
+    github_url: str, skill_name: str | None = None, description: str | None = None
+) -> int:
     """Add a skill from a GitHub URL."""
     github_url = _extract_sanitized_github_url(github_url) or github_url
     return _download_skill(github_url, skill_name=skill_name, description=description)
@@ -428,11 +451,12 @@ def cmd_import() -> int:
     if errors:
         print(f"✗ {errors} skill(s) failed to import")
         return 1
-    print(f"✓ Import complete!")
+    print("✓ Import complete!")
     return 0
 
 
 # ── entry point ──────────────────────────────────────────────────────────────
+
 
 def main() -> None:
     args = sys.argv[1:]
@@ -463,7 +487,9 @@ def main() -> None:
         if len(args) < 3:
             print("Usage: skill.update.py sync [src-skill-dir dst-skill-dir]")
             print("  No args  → import all skills from skills.json")
-            print("  With args → copy .md files from src/references/ into dst/references/")
+            print(
+                "  With args → copy .md files from src/references/ into dst/references/"
+            )
             sys.exit(1)
         sys.exit(cmd_sync(args[1], args[2]))
 

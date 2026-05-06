@@ -92,9 +92,7 @@ class CRUD(Generic[ModelType]):
         await db.refresh(item)
         return item
 
-    async def update(
-        self, db: AsyncSession, item_id: int, schema: UpdateSchema
-    ) -> ModelType:
+    async def update(self, db: AsyncSession, item_id: int, schema: UpdateSchema) -> ModelType:
         """Update an item. Only non-None fields are applied."""
         item = await self.get(db, item_id)
         for key, value in schema.model_dump(exclude_unset=True).items():

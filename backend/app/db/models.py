@@ -26,6 +26,7 @@ class Base(DeclarativeBase):
 
 # ── Item ──────────────────────────────────────────────────────────
 
+
 class Item(Base):
     __tablename__ = "items"
 

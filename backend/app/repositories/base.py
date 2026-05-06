@@ -49,9 +49,7 @@ class BaseRepository(Generic[ModelType]):
                 if hasattr(self.model, col):
                     query = query.where(getattr(self.model, col) == val)
 
-        total = await db.scalar(
-            select(func.count()).select_from(query.subquery())
-        ) or 0
+        total = await db.scalar(select(func.count()).select_from(query.subquery())) or 0
 
         col = getattr(self.model, order_by, self.model.created_at)
         query = query.order_by(col.desc() if descending else col.asc())
@@ -70,9 +68,7 @@ class BaseRepository(Generic[ModelType]):
 
     async def get(self, db: AsyncSession, item_id: int) -> ModelType:
         """Get by ID. Raises 404 if missing."""
-        result = await db.execute(
-            select(self.model).where(self.model.id == item_id)
-        )
+        result = await db.execute(select(self.model).where(self.model.id == item_id))
         item = result.scalar_one_or_none()
         if not item:
             raise HTTPException(status_code=404, detail=f"{self.model.__name__} not found")
