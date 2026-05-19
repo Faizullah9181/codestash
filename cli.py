@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -25,39 +26,143 @@ AGENTS_MD_SRC = ROOT / "AGENTS.md"
 CONFIG_FILE = Path("agentic.yaml")
 
 PROVIDER_TYPES = [
-    "openai", "gemini", "anthropic", "groq",
-    "openrouter", "azure-openai", "ollama", "openai-compatible",
+    "openai",
+    "gemini",
+    "anthropic",
+    "groq",
+    "openrouter",
+    "azure-openai",
+    "ollama",
+    "openai-compatible",
 ]
 
 PROVIDER_MODELS = {
-    "openai": "gpt-4o", "gemini": "gemini-2.5-pro",
-    "anthropic": "claude-sonnet-4-20250514", "groq": "llama-3.3-70b",
-    "openrouter": "openai/gpt-4o", "azure-openai": "gpt-4o",
-    "ollama": "llama3", "openai-compatible": "qwen2.5-coder",
+    "openai": "gpt-4o",
+    "gemini": "gemini-2.5-pro",
+    "anthropic": "claude-sonnet-4-20250514",
+    "groq": "llama-3.3-70b",
+    "openrouter": "openai/gpt-4o",
+    "azure-openai": "gpt-4o",
+    "ollama": "llama3",
+    "openai-compatible": "qwen2.5-coder",
+}
+
+PROVIDER_ENV_VARS = {
+    "openai": {
+        "api_key": "OPENAI_API_KEY",
+        "base_url": "OPENAI_BASE_URL",
+        "base_url_default": "",
+    },
+    "gemini": {
+        "api_key": "GEMINI_API_KEY",
+        "base_url": "GEMINI_BASE_URL",
+        "base_url_default": "",
+    },
+    "anthropic": {
+        "api_key": "ANTHROPIC_API_KEY",
+        "base_url": "ANTHROPIC_BASE_URL",
+        "base_url_default": "",
+    },
+    "groq": {
+        "api_key": "GROQ_API_KEY",
+        "base_url": "GROQ_BASE_URL",
+        "base_url_default": "https://api.groq.com/openai/v1",
+    },
+    "openrouter": {
+        "api_key": "OPENROUTER_API_KEY",
+        "base_url": "OPENROUTER_BASE_URL",
+        "base_url_default": "https://openrouter.ai/api/v1",
+    },
+    "azure-openai": {
+        "api_key": "AZURE_OPENAI_API_KEY",
+        "base_url": "AZURE_OPENAI_ENDPOINT",
+        "base_url_default": "",
+    },
+    "ollama": {
+        "api_key": "OLLAMA_API_KEY",
+        "base_url": "OLLAMA_BASE_URL",
+        "base_url_default": "http://localhost:11434/v1",
+    },
+    "openai-compatible": {
+        "api_key": "OPENAI_COMPATIBLE_API_KEY",
+        "base_url": "OPENAI_COMPATIBLE_BASE_URL",
+        "base_url_default": "",
+    },
+}
+
+BASE_URL_PROMPT_PROVIDERS = {
+    "azure-openai",
+    "ollama",
+    "openai-compatible",
+    "openrouter",
 }
 
 ORCHESTRATION_FRAMEWORKS = [
-    "langchain", "langgraph", "openai-agents",
-    "google-adk", "crewai", "strands",
+    "langchain",
+    "langgraph",
+    "openai-agents",
+    "google-adk",
+    "crewai",
+    "strands",
 ]
 
 PATTERNS = [
-    "react", "planner-executor", "reflection", "rag",
-    "sequential", "swarm", "reviewer-critic", "hierarchical",
-    "autonomous", "tool-use", "planning", "parallel",
-    "debate", "coordinator", "blackboard",
+    "react",
+    "planner-executor",
+    "reflection",
+    "rag",
+    "sequential",
+    "swarm",
+    "reviewer-critic",
+    "hierarchical",
+    "autonomous",
+    "tool-use",
+    "planning",
+    "parallel",
+    "debate",
+    "coordinator",
+    "blackboard",
 ]
 
-MCP_SERVERS = ["filesystem", "github", "postgres", "brave-search", "memory", "puppeteer"]
+MCP_SERVERS = [
+    "filesystem",
+    "github",
+    "postgres",
+    "brave-search",
+    "memory",
+    "puppeteer",
+]
 
 IGNORE_PATTERNS = {
-    "__pycache__", ".pytest_cache", ".ruff_cache", ".venv", "venv",
-    "node_modules", "dist", "build", ".DS_Store", "*.pyc", ".git",
+    "__pycache__",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".venv",
+    "venv",
+    "node_modules",
+    "dist",
+    "build",
+    ".DS_Store",
+    "*.pyc",
+    ".git",
 }
 
 REPLACEABLE_SUFFIXES = {
-    ".py", ".ts", ".tsx", ".json", ".toml", ".yaml", ".yml",
-    ".md", ".tf", ".html", ".css", ".js", ".cfg", ".ini", ".example",
+    ".py",
+    ".ts",
+    ".tsx",
+    ".json",
+    ".toml",
+    ".yaml",
+    ".yml",
+    ".md",
+    ".tf",
+    ".html",
+    ".css",
+    ".js",
+    ".cfg",
+    ".ini",
+    ".example",
 }
 
 
@@ -73,6 +178,7 @@ def _load_config() -> dict:
 
 def _save_config(config: dict) -> None:
     import yaml
+
     CONFIG_FILE.write_text(yaml.dump(config, default_flow_style=False))
 
 
@@ -168,6 +274,178 @@ def _copy_file(src: Path, dst: Path, r: dict[str, str]) -> None:
         dst.write_text(content)
 
 
+def _provider_env(provider: str) -> dict[str, str]:
+    return PROVIDER_ENV_VARS.get(provider, PROVIDER_ENV_VARS["openai"])
+
+
+def _provider_api_key_env(provider: str) -> str:
+    return _provider_env(provider)["api_key"]
+
+
+def _provider_base_url_env(provider: str) -> str:
+    return _provider_env(provider)["base_url"]
+
+
+def _provider_base_url_default(provider: str) -> str:
+    return _provider_env(provider).get("base_url_default", "")
+
+
+def _env_value(value: str) -> str:
+    if value == "":
+        return ""
+    if any(ch.isspace() for ch in value) or any(ch in value for ch in "#'\""):
+        return json.dumps(value)
+    return value
+
+
+def _env_line(key: str, value: str) -> str:
+    return f"{key}={_env_value(value)}"
+
+
+def _backend_env_content(
+    name: str,
+    provider: str,
+    model: str,
+    fw: str,
+    pattern: str,
+    mcp_servers: list[str],
+    api_key: str,
+    base_url: str,
+    *,
+    example: bool,
+) -> str:
+    db_name = name
+    app_name = f"{name.replace('-', ' ').replace('_', ' ').title()} API"
+    api_key_env = _provider_api_key_env(provider)
+    base_url_env = _provider_base_url_env(provider)
+    effective_base_url = base_url or _provider_base_url_default(provider)
+
+    lines = [
+        "# Application",
+        _env_line("APP_NAME", app_name),
+        _env_line("ENV", "development"),
+        _env_line(
+            "DATABASE_URL",
+            f"postgresql+asyncpg://{db_name}:{db_name}@db:5432/{db_name}",
+        ),
+        _env_line("CORS_ORIGINS", "http://localhost:5173"),
+        "",
+        "# Agent",
+        _env_line("AGENT_PROVIDER_TYPE", provider),
+        _env_line("AGENT_MODEL", model),
+        _env_line("AGENT_TEMPERATURE", "0.7"),
+        _env_line("AGENT_MAX_TOKENS", "4096"),
+        _env_line("AGENT_ORCHESTRATION_FRAMEWORK", fw),
+        _env_line("AGENT_PATTERN", pattern),
+        _env_line("AGENT_MCP_SERVERS", ",".join(mcp_servers)),
+        "",
+        f"# Provider: {provider}",
+        _env_line(api_key_env, "" if example else api_key),
+    ]
+
+    if effective_base_url:
+        lines.append(_env_line(base_url_env, effective_base_url))
+
+    if provider == "azure-openai":
+        lines.append(_env_line("AZURE_OPENAI_API_VERSION", "2024-02-15-preview"))
+
+    return "\n".join(lines).rstrip() + "\n"
+
+
+def _write_backend_env_files(
+    backend_dir: Path,
+    name: str,
+    provider: str,
+    model: str,
+    fw: str,
+    pattern: str,
+    mcp_servers: list[str],
+    api_key: str,
+    base_url: str,
+) -> None:
+    backend_dir.mkdir(parents=True, exist_ok=True)
+    (backend_dir / ".env.example").write_text(
+        _backend_env_content(
+            name,
+            provider,
+            model,
+            fw,
+            pattern,
+            mcp_servers,
+            api_key="",
+            base_url=base_url,
+            example=True,
+        )
+    )
+    (backend_dir / ".env").write_text(
+        _backend_env_content(
+            name,
+            provider,
+            model,
+            fw,
+            pattern,
+            mcp_servers,
+            api_key=api_key,
+            base_url=base_url,
+            example=False,
+        )
+    )
+
+
+def _write_frontend_env(output_dir: Path) -> None:
+    env_example = output_dir / "frontend" / ".env.example"
+    if env_example.exists():
+        (output_dir / "frontend" / ".env").write_text(env_example.read_text())
+
+
+def _yaml_scalar(value: object) -> str:
+    if value is None:
+        return '""'
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, (int, float)):
+        return str(value)
+    text = str(value)
+    if text == "":
+        return '""'
+    if re.fullmatch(r"[A-Za-z0-9_./:@+-]+", text):
+        return text
+    return json.dumps(text)
+
+
+def _dump_simple_yaml(value: object, indent: int = 0) -> str:
+    spaces = " " * indent
+    lines: list[str] = []
+    if isinstance(value, dict):
+        for key, item in value.items():
+            if isinstance(item, dict):
+                lines.append(f"{spaces}{key}:")
+                lines.append(_dump_simple_yaml(item, indent + 2))
+            elif isinstance(item, list):
+                if not item:
+                    lines.append(f"{spaces}{key}: []")
+                    continue
+                lines.append(f"{spaces}{key}:")
+                lines.append(_dump_simple_yaml(item, indent + 2))
+            else:
+                lines.append(f"{spaces}{key}: {_yaml_scalar(item)}")
+    elif isinstance(value, list):
+        for item in value:
+            if isinstance(item, dict):
+                item_lines = _dump_simple_yaml(item, indent + 2).splitlines()
+                if item_lines:
+                    first = item_lines[0].lstrip()
+                    lines.append(f"{spaces}- {first}")
+                    lines.extend(item_lines[1:])
+                else:
+                    lines.append(f"{spaces}- {{}}")
+            else:
+                lines.append(f"{spaces}- {_yaml_scalar(item)}")
+    else:
+        lines.append(f"{spaces}{_yaml_scalar(value)}")
+    return "\n".join(lines)
+
+
 def _write_gitignore(dst: Path) -> None:
     (dst / ".gitignore").write_text("""__pycache__/
 *.py[cod]
@@ -198,7 +476,11 @@ def _print_tree(path: Path, prefix: str = "", depth: int = 0) -> None:
     if depth >= 2:
         return
     items = sorted(
-        [p for p in path.iterdir() if p.name not in IGNORE_PATTERNS and p.name != ".gitignore"],
+        [
+            p
+            for p in path.iterdir()
+            if p.name not in IGNORE_PATTERNS and p.name != ".gitignore"
+        ],
         key=lambda p: (not p.is_dir(), p.name),
     )
     for i, item in enumerate(items[:12]):
@@ -213,32 +495,123 @@ def _print_tree(path: Path, prefix: str = "", depth: int = 0) -> None:
 # -- Backend generation -------------------------------------------------------
 
 PROVIDER_NAMES = {
-    "openai": "OPENAI", "gemini": "GEMINI", "anthropic": "ANTHROPIC",
-    "groq": "GROQ", "ollama": "OLLAMA", "openai-compatible": "OPENAI_COMPATIBLE",
-    "openrouter": "OPENROUTER", "azure-openai": "AZURE_OPENAI",
+    "openai": "OPENAI",
+    "gemini": "GEMINI",
+    "anthropic": "ANTHROPIC",
+    "groq": "GROQ",
+    "ollama": "OLLAMA",
+    "openai-compatible": "OPENAI_COMPATIBLE",
+    "openrouter": "OPENROUTER",
+    "azure-openai": "AZURE_OPENAI",
 }
 
 PATTERN_NAMES = {
-    "react": "REACT", "planner-executor": "PLANNER_EXECUTOR",
-    "reflection": "REFLECTION", "rag": "RAG", "swarm": "SWARM",
-    "sequential": "SEQUENTIAL", "reviewer-critic": "REVIEWER_CRITIC",
-    "hierarchical": "HIERARCHICAL", "autonomous": "AUTONOMOUS",
-    "tool-use": "TOOL_USE", "planning": "PLANNING", "parallel": "PARALLEL",
-    "debate": "DEBATE", "coordinator": "COORDINATOR", "blackboard": "BLACKBOARD",
+    "react": "REACT",
+    "planner-executor": "PLANNER_EXECUTOR",
+    "reflection": "REFLECTION",
+    "rag": "RAG",
+    "swarm": "SWARM",
+    "sequential": "SEQUENTIAL",
+    "reviewer-critic": "REVIEWER_CRITIC",
+    "hierarchical": "HIERARCHICAL",
+    "autonomous": "AUTONOMOUS",
+    "tool-use": "TOOL_USE",
+    "planning": "PLANNING",
+    "parallel": "PARALLEL",
+    "debate": "DEBATE",
+    "coordinator": "COORDINATOR",
+    "blackboard": "BLACKBOARD",
 }
 
 
-def _generate_config_py(provider: str, pattern: str) -> str:
+def _generate_config_py(
+    name: str,
+    provider: str,
+    pattern: str,
+    model: str,
+    fw: str,
+    mcp_servers: list[str],
+    base_url: str,
+) -> str:
     prov_name = PROVIDER_NAMES.get(provider, "OPENAI")
     pat_name = PATTERN_NAMES.get(pattern, "REACT")
-    mdl = PROVIDER_MODELS.get(provider, "gpt-4o")
+    api_key_env = _provider_api_key_env(provider)
+    base_url_env = _provider_base_url_env(provider)
+    effective_base_url = base_url or _provider_base_url_default(provider)
+    mcp_servers_repr = repr(mcp_servers)
+    azure_extra = (
+        '{"api_version": _env("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")}'
+        if provider == "azure-openai"
+        else "{}"
+    )
     return f'''"""Agent configuration for {pattern} pattern with {provider} provider."""
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from enum import Enum
+from pathlib import Path
 from typing import Any
+
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+BACKEND_ROOT = PROJECT_ROOT / "backend"
+PROVIDER_API_KEY_ENV = "{api_key_env}"
+PROVIDER_BASE_URL_ENV = "{base_url_env}"
+DEFAULT_BASE_URL = "{effective_base_url}"
+
+
+def _load_dotenv(path: Path) -> None:
+    if not path.exists():
+        return
+    for raw_line in path.read_text().splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if len(value) >= 2 and value[0] == value[-1] and value[0] in {{"'", '"'}}:
+            value = value[1:-1]
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
+_load_dotenv(BACKEND_ROOT / ".env")
+_load_dotenv(PROJECT_ROOT / ".env")
+
+
+def _env(name: str, default: str = "") -> str:
+    return os.environ.get(name, default)
+
+
+def _first_env(names: tuple[str, ...], default: str = "") -> str:
+    for name in names:
+        value = os.environ.get(name)
+        if value:
+            return value
+    return default
+
+
+def _float_env(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def _int_env(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, default))
+    except (TypeError, ValueError):
+        return default
+
+
+def _csv_env(name: str, default: list[str]) -> list[str]:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return [item.strip() for item in value.split(",") if item.strip()]
 
 
 class ProviderType(str, Enum):
@@ -251,18 +624,26 @@ class PatternType(str, Enum):
 
 @dataclass
 class AgentConfig:
-    name: str = "agent"
+    name: str = field(default_factory=lambda: _env("AGENT_NAME", "{name}"))
     provider_type: ProviderType = ProviderType.{prov_name}
-    model: str = "{mdl}"
-    api_key: str = ""
-    base_url: str = ""
-    temperature: float = 0.7
-    max_tokens: int = 4096
-    extra: dict[str, Any] = field(default_factory=dict)
+    model: str = field(default_factory=lambda: _env("AGENT_MODEL", "{model}"))
+    api_key: str = field(
+        default_factory=lambda: _first_env((PROVIDER_API_KEY_ENV, "PROVIDER_API_KEY"), "")
+    )
+    base_url: str = field(
+        default_factory=lambda: _first_env((PROVIDER_BASE_URL_ENV, "AGENT_BASE_URL"), DEFAULT_BASE_URL)
+    )
+    temperature: float = field(default_factory=lambda: _float_env("AGENT_TEMPERATURE", 0.7))
+    max_tokens: int = field(default_factory=lambda: _int_env("AGENT_MAX_TOKENS", 4096))
+    extra: dict[str, Any] = field(
+        default_factory=lambda: {{
+            "orchestration_framework": _env("AGENT_ORCHESTRATION_FRAMEWORK", "{fw}"),
+            "pattern": _env("AGENT_PATTERN", "{pattern}"),
+            "mcp_servers": _csv_env("AGENT_MCP_SERVERS", {mcp_servers_repr}),
+            **{azure_extra},
+        }}
+    )
 '''
-
-
-
 
 
 def _memory_module_py() -> str:
@@ -367,7 +748,128 @@ class Tracer:
 '''
 
 
-def _write_backend(output_dir: Path, name: str, provider: str, fw: str, pattern: str, mcp_servers: list[str], r: dict[str, str]) -> None:
+def _strands_module_py() -> str:
+    return '''"""Strands orchestration framework.
+
+Strands is a concurrent-agent orchestration pattern where multiple
+parallel "strands" of thought / execution are woven together by a
+coordinator.  Each strand explores a different angle of the task,
+then the coordinator merges results into a final answer.
+"""
+
+from __future__ import annotations
+
+import asyncio
+from dataclasses import dataclass
+from typing import Any, Callable, Coroutine
+
+from app.agentic.memory import Memory
+
+
+@dataclass
+class Strand:
+    """A single parallel execution strand."""
+
+    name: str
+    prompt: str
+    result: str | None = None
+    error: str | None = None
+
+
+class StrandsOrchestrator:
+    """Weave parallel strands of agent reasoning into one answer."""
+
+    def __init__(self, max_strands: int = 5) -> None:
+        self.max_strands = max_strands
+        self.memory = Memory()
+
+    async def weave(
+        self,
+        task: str,
+        executor: Callable[[list[dict[str, str]]], Coroutine[Any, Any, str]],
+        system_prompt: str | None = None,
+    ) -> str:
+        """Decompose *task* into strands, execute in parallel, weave results."""
+        strands = await self._plan(task, executor, system_prompt)
+        strands = await self._execute(strands, executor, system_prompt)
+        return await self._synthesise(task, strands, executor, system_prompt)
+
+    async def _plan(
+        self,
+        task: str,
+        executor: Callable[[list[dict[str, str]]], Coroutine[Any, Any, str]],
+        system_prompt: str | None,
+    ) -> list[Strand]:
+        plan_prompt = (
+            "Break the following task into 2-4 independent sub-tasks that can "
+            "be explored in parallel.  Return ONLY a numbered list, one per line.\\n\\n"
+            f"Task: {{task}}"
+        )
+        msgs: list[dict[str, str]] = [{{"role": "user", "content": plan_prompt}}]
+        if system_prompt:
+            msgs.insert(0, {{"role": "system", "content": system_prompt}})
+        raw = await executor(msgs)
+        strands: list[Strand] = []
+        for line in raw.splitlines():
+            stripped = line.lstrip(" -0123456789.#*•\\t")
+            if stripped:
+                strands.append(Strand(name=f"strand-{{len(strands)+1}}", prompt=stripped))
+        return strands[: self.max_strands]
+
+    async def _execute(
+        self,
+        strands: list[Strand],
+        executor: Callable[[list[dict[str, str]]], Coroutine[Any, Any, str]],
+        system_prompt: str | None,
+    ) -> list[Strand]:
+        async def _run_one(s: Strand) -> Strand:
+            msgs: list[dict[str, str]] = [{{"role": "user", "content": s.prompt}}]
+            if system_prompt:
+                msgs.insert(0, {{"role": "system", "content": system_prompt}})
+            try:
+                s.result = await executor(msgs)
+            except Exception as exc:
+                s.error = str(exc)
+            return s
+        return list(await asyncio.gather(*[_run_one(s) for s in strands]))
+
+    async def _synthesise(
+        self,
+        task: str,
+        strands: list[Strand],
+        executor: Callable[[list[dict[str, str]]], Coroutine[Any, Any, str]],
+        system_prompt: str | None,
+    ) -> str:
+        findings = ""
+        for s in strands:
+            if s.result:
+                findings += f"\\n### {{s.name}}\\n{{s.result}}\\n"
+            elif s.error:
+                findings += f"\\n### {{s.name}} (error)\\n{{s.error}}\\n"
+        synth_prompt = (
+            "Below are results from parallel explorations of a task. "
+            "Synthesise them into ONE concise final answer.\\n\\n"
+            f"Original task: {{task}}\\n{{findings}}\\n\\nFINAL ANSWER:"
+        )
+        msgs: list[dict[str, str]] = [{{"role": "user", "content": synth_prompt}}]
+        if system_prompt:
+            msgs.insert(0, {{"role": "system", "content": system_prompt}})
+        return await executor(msgs)
+'''
+
+
+def _write_backend(
+    output_dir: Path,
+    name: str,
+    provider: str,
+    model: str,
+    fw: str,
+    pattern: str,
+    mcp_servers: list[str],
+    api_key: str,
+    base_url: str,
+    r: dict[str, str],
+) -> None:
     be = output_dir / "backend"
     app_dir = be / "app"
     agentic_dir = app_dir / "agentic"
@@ -378,9 +880,16 @@ def _write_backend(output_dir: Path, name: str, provider: str, fw: str, pattern:
     _copy_file(BACKEND_SRC / "pyproject.toml", be / "pyproject.toml", r)
     _copy_file(BACKEND_SRC / "Dockerfile", be / "Dockerfile", r)
     _copy_file(BACKEND_SRC / "Makefile", be / "Makefile", r)
-    (be / ".env.example").write_text(
-        "DATABASE_URL=postgresql+asyncpg://user:password@localhost:5432/dbname\n"
-        "PROVIDER_API_KEY=\nOPENAI_API_KEY=\nGEMINI_API_KEY=\nANTHROPIC_API_KEY=\n"
+    _write_backend_env_files(
+        be,
+        name,
+        provider,
+        model,
+        fw,
+        pattern,
+        mcp_servers,
+        api_key,
+        base_url,
     )
 
     (app_dir / "__init__.py").write_text("")
@@ -429,8 +938,12 @@ def _write_backend(output_dir: Path, name: str, provider: str, fw: str, pattern:
         _copy_file(src_test, tests_dir / "test_health.py", r)
 
     (agentic_dir / "__init__.py").write_text(f'"""Agentic AI agent for {name}."""\n')
-    (agentic_dir / "config.py").write_text(_generate_config_py(provider, pattern))
-    (agentic_dir / "agent.py").write_text(_generate_agent_py(name, pattern, provider, fw))
+    (agentic_dir / "config.py").write_text(
+        _generate_config_py(name, provider, pattern, model, fw, mcp_servers, base_url)
+    )
+    (agentic_dir / "agent.py").write_text(
+        _generate_agent_py(name, pattern, provider, fw)
+    )
 
     memory_dir = agentic_dir / "memory"
     memory_dir.mkdir(exist_ok=True)
@@ -444,17 +957,38 @@ def _write_backend(output_dir: Path, name: str, provider: str, fw: str, pattern:
     tele_dir.mkdir(exist_ok=True)
     (tele_dir / "__init__.py").write_text(_telemetry_module_py())
 
+    if fw == "strands":
+        strands_dir = agentic_dir / "strands"
+        strands_dir.mkdir(exist_ok=True)
+        (strands_dir / "__init__.py").write_text(_strands_module_py())
+
 
 # -- Agent templates per pattern (self-contained, no external provider/orch imports) --
 
-def _setup_agent_dir(output_dir: Path, name: str, provider: str, fw: str, pattern: str, mcp_servers: list[str]) -> None:
+
+def _setup_agent_dir(
+    output_dir: Path,
+    name: str,
+    provider: str,
+    fw: str,
+    pattern: str,
+    mcp_servers: list[str],
+) -> None:
     agent_dir = output_dir / ".agent"
     agent_dir.mkdir(parents=True, exist_ok=True)
 
-    (agent_dir / "skill.update.py").write_text((AGENT_SRC / "skill.update.py").read_text())
+    (agent_dir / "skill.update.py").write_text(
+        (AGENT_SRC / "skill.update.py").read_text()
+    )
     _write_filtered_skills_json(agent_dir, provider, fw)
 
-    core_skills = {"agent-setup", "arch-review", "git-safety", "test-cycle", "skill-forge"}
+    core_skills = {
+        "agent-setup",
+        "arch-review",
+        "git-safety",
+        "test-cycle",
+        "skill-forge",
+    }
     skills_dir = agent_dir / "skills"
     skills_dir.mkdir(exist_ok=True)
     for skill_name in sorted(core_skills):
@@ -462,7 +996,9 @@ def _setup_agent_dir(output_dir: Path, name: str, provider: str, fw: str, patter
         if src.exists():
             _copy_dir(src, skills_dir / skill_name, {})
 
-    (agent_dir / "CLAUDE.md").write_text(_generate_claude_md(name, provider, fw, pattern, mcp_servers))
+    (agent_dir / "CLAUDE.md").write_text(
+        _generate_claude_md(name, provider, fw, pattern, mcp_servers)
+    )
     (agent_dir / "settings.json").write_text("{}")
     (agent_dir / "settings.local.json").write_text("{}")
 
@@ -497,7 +1033,9 @@ def _write_filtered_skills_json(agent_dir: Path, provider: str, fw: str) -> None
     (agent_dir / "skills.json").write_text(json.dumps(filtered, indent=2))
 
 
-def _generate_claude_md(name: str, provider: str, fw: str, pattern: str, mcp_servers: list[str]) -> str:
+def _generate_claude_md(
+    name: str, provider: str, fw: str, pattern: str, mcp_servers: list[str]
+) -> str:
     mcp_list = ", ".join(mcp_servers) if mcp_servers else "none"
     return f"""# {name} -- Agent Instructions
 
@@ -547,7 +1085,9 @@ def _generate_agent_md(name: str, pattern: str) -> str:
         "autonomous": "Drive toward the goal independently, using tools as needed.",
         "tool-use": "Select and use the right tool for each step of the task.",
     }
-    strategy = strategies.get(pattern, "Execute the task efficiently using available tools and context.")
+    strategy = strategies.get(
+        pattern, "Execute the task efficiently using available tools and context."
+    )
     return f"""# {name} Agent
 
 ## Role
@@ -565,6 +1105,7 @@ You are a {pattern} agent for the {name} project.
 
 # -- Create Project (full interactive flow) ------------------------------------
 
+
 def _interactive_create_project() -> None:
     print("\n  [ Create New Project ]\n")
     name = _prompt("Project name", "my-project")
@@ -572,17 +1113,20 @@ def _interactive_create_project() -> None:
 
     output_dir = Path(output).resolve() / name
     if output_dir.exists() and any(output_dir.iterdir()):
-        if not _confirm(f"Directory '{output_dir}' already exists. Overwrite?", default=False):
+        if not _confirm(
+            f"Directory '{output_dir}' already exists. Overwrite?", default=False
+        ):
             print("  Aborted.\n")
             return
 
     print("\n  -- LLM Provider --")
     provider = _select("Provider type:", PROVIDER_TYPES, default=0)
     model = _prompt("Model name", PROVIDER_MODELS.get(provider, "gpt-4o"))
-    api_key = _prompt("API key (leave blank to use env var)", "")
+    api_key_env = _provider_api_key_env(provider)
+    api_key = _prompt(f"API key (leave blank to use {api_key_env})", "")
     base_url = ""
-    if provider in ("ollama", "openai-compatible", "openrouter"):
-        default_url = "http://localhost:11434/v1" if provider == "ollama" else ""
+    if provider in BASE_URL_PROMPT_PROVIDERS:
+        default_url = _provider_base_url_default(provider)
         base_url = _prompt("Base URL", default_url)
 
     print("\n  -- Orchestration --")
@@ -607,8 +1151,20 @@ def _interactive_create_project() -> None:
         "codestash": name,
     }
 
-    _write_backend(output_dir, name, provider, fw, pattern, mcp_servers, r)
+    _write_backend(
+        output_dir,
+        name,
+        provider,
+        model,
+        fw,
+        pattern,
+        mcp_servers,
+        api_key,
+        base_url,
+        r,
+    )
     _copy_dir(FRONTEND_SRC, output_dir / "frontend", r)
+    _write_frontend_env(output_dir)
     _copy_dir(TERRAFORM_SRC, output_dir / "terraform", r)
     _copy_dir(GITHUB_SRC, output_dir / ".github", r)
     _setup_agent_dir(output_dir, name, provider, fw, pattern, mcp_servers)
@@ -617,13 +1173,24 @@ def _interactive_create_project() -> None:
     _copy_file(Path(__file__), output_dir / "cli.py", {})
     _write_gitignore(output_dir)
 
-    _write_agentic_yaml(output_dir, name, {
-        "provider": {"type": provider, "model": model, "api_key": api_key, "base_url": base_url, "temperature": 0.7},
-        "orchestration": {"framework": fw},
-        "pattern": {"type": pattern},
-        "mcp": {"servers": [{"name": s, "enabled": True} for s in mcp_servers]},
-        "memory": {"backend": "simple"},
-    })
+    _write_agentic_yaml(
+        output_dir,
+        name,
+        {
+            "provider": {
+                "type": provider,
+                "model": model,
+                "api_key_env": _provider_api_key_env(provider),
+                "base_url": base_url or _provider_base_url_default(provider),
+                "base_url_env": _provider_base_url_env(provider),
+                "temperature": 0.7,
+            },
+            "orchestration": {"framework": fw},
+            "pattern": {"type": pattern},
+            "mcp": {"servers": [{"name": s, "enabled": True} for s in mcp_servers]},
+            "memory": {"backend": "simple"},
+        },
+    )
 
     print("\n  Syncing AI skills...")
     skill_py = output_dir / ".agent" / "skill.update.py"
@@ -639,17 +1206,22 @@ def _interactive_create_project() -> None:
     print(f"    MCP Servers:   {', '.join(mcp_servers) if mcp_servers else 'none'}")
     print("\n  Next steps:")
     print(f"    cd {output_dir}")
-    print("    cp backend/.env.example backend/.env")
     print("    docker compose up --build\n")
 
 
 def _write_agentic_yaml(output_dir: Path, project_name: str, config: dict) -> None:
-    import yaml
-    config["name"] = project_name
-    (output_dir / "agentic.yaml").write_text(yaml.dump(config, default_flow_style=False))
+    config = {"name": project_name, **config}
+    try:
+        import yaml
+    except ImportError:
+        content = _dump_simple_yaml(config) + "\n"
+    else:
+        content = yaml.dump(config, default_flow_style=False, sort_keys=False)
+    (output_dir / "agentic.yaml").write_text(content)
 
 
 # -- View Configuration --------------------------------------------------------
+
 
 def _interactive_view_config() -> None:
     c = _load_config()
@@ -719,6 +1291,7 @@ def _menu() -> None:
 def main() -> None:
     _menu()
 
+
 # -- New agent templates (F433 pattern: factory + orchestrator class + singleton) --
 
 PROVIDER_IMPORTS = {
@@ -733,14 +1306,14 @@ PROVIDER_IMPORTS = {
 }
 
 PROVIDER_INIT = {
-    "openai": '        self._client = AsyncOpenAI(api_key=self._config.api_key or None)',
-    "gemini": '        self._client = genai.Client(api_key=self._config.api_key)',
-    "anthropic": '        self._client = AsyncAnthropic(api_key=self._config.api_key)',
-    "groq": '        self._client = AsyncOpenAI(api_key=self._config.api_key, base_url="https://api.groq.com/openai/v1")',
+    "openai": "        self._client = AsyncOpenAI(api_key=self._config.api_key or None)",
+    "gemini": "        self._client = genai.Client(api_key=self._config.api_key)",
+    "anthropic": "        self._client = AsyncAnthropic(api_key=self._config.api_key)",
+    "groq": '        self._client = AsyncOpenAI(api_key=self._config.api_key, base_url=self._config.base_url or "https://api.groq.com/openai/v1")',
     "ollama": '        self._client = AsyncOpenAI(api_key="ollama", base_url=self._config.base_url or "http://localhost:11434/v1")',
     "openai-compatible": '        self._client = AsyncOpenAI(api_key=self._config.api_key or "local", base_url=self._config.base_url or None)',
-    "openrouter": '        self._client = AsyncOpenAI(api_key=self._config.api_key, base_url="https://openrouter.ai/api/v1")',
-    "azure-openai": '        self._client = AsyncOpenAI(api_key=self._config.api_key, base_url=self._config.base_url)',
+    "openrouter": '        self._client = AsyncOpenAI(api_key=self._config.api_key, base_url=self._config.base_url or "https://openrouter.ai/api/v1")',
+    "azure-openai": "        self._client = AsyncOpenAI(api_key=self._config.api_key, base_url=self._config.base_url)",
 }
 
 COMPAT_NEEDS_LITELLM = {
@@ -774,20 +1347,71 @@ def _compat_setup() -> str:
 
 def _generate_agent_py(name: str, pattern: str, provider: str, fw: str) -> str:
     import sys
+
     sys.path.insert(0, str(ROOT))
     from agent_templates import _AGENT_TEMPLATES
+
     template = _AGENT_TEMPLATES.get(pattern, _AGENT_TEMPLATES["react"])
     import_line = PROVIDER_IMPORTS.get(provider, PROVIDER_IMPORTS["openai"])
     init_line = PROVIDER_INIT.get(provider, PROVIDER_INIT["openai"])
     needs_compat = _needs_litellm(fw, provider)
     compat_block = _compat_block(fw, provider) if needs_compat else ""
     compat_setup = _compat_setup() if needs_compat else ""
-    return template.format(
-        name=name, pattern=pattern, provider=provider, fw=fw,
-        provider_import=import_line, provider_init=init_line,
-        compat_block=compat_block, compat_setup=compat_setup,
+
+    # Inject strands-specific code when framework is strands
+    if fw == "strands":
+        imports_extra = "\nfrom app.agentic.strands import StrandsOrchestrator"
+        init_extra = "\n        self._strands = StrandsOrchestrator(max_strands=4)"
+        methods_extra = (
+            "\n"
+            "    # ── Strands-weave (parallel exploration) ──────────────────────\n"
+            "\n"
+            "    async def weave(self, task: str) -> str:\n"
+            '        """Run the task through the Strands orchestrator for parallel exploration."""\n'
+            '        await self.memory.add(MemoryEntry(role="user", content=task))\n'
+            '        system_prompt = "You are a focused reasoning strand. Answer concisely and thoroughly."\n'
+            "\n"
+            "        async def _exec(msgs: list[dict]) -> str:\n"
+            "            return await self._call(msgs)\n"
+            "\n"
+            "        result = await self._strands.weave(task, _exec, system_prompt=system_prompt)\n"
+            '        await self.memory.add(MemoryEntry(role="assistant", content=result))\n'
+            "        return result\n"
+        )
+        # Inject import after the base provider_import
+        import_line = import_line + imports_extra
+        # Inject strands init after provider_init
+        init_line = init_line + init_extra
+        # Inject weave method before the class closing — we modify template post-format
+    else:
+        methods_extra = ""
+
+    result = template.format(
+        name=name,
+        pattern=pattern,
+        provider=provider,
+        fw=fw,
+        provider_import=import_line,
+        provider_init=init_line,
+        compat_block=compat_block,
+        compat_setup=compat_setup,
         class_name=name.replace("-", " ").title().replace(" ", ""),
     )
+
+    if fw == "strands":
+        # Add the docstring mention of strands
+        result = result.replace(
+            f"""Root orchestrator for {name} -- {pattern} pattern.""",
+            f"""Root orchestrator for {name} -- {pattern} + strands pattern.""",
+        )
+        # Append the weave method before root_agent singleton
+        result = result.replace(
+            "\n\nroot_agent = build_root_agent()",
+            methods_extra + "\n\nroot_agent = build_root_agent()",
+        )
+
+    return result
+
 
 if __name__ == "__main__":
     main()

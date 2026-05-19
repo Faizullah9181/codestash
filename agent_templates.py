@@ -4,7 +4,9 @@ _AGENT_TEMPLATES: dict[str, str] = {}
 
 # React -----------------------------------------------------------------------
 
-_AGENT_TEMPLATES["react"] = '''"""ReAct agent -- {name} ({pattern} / {provider} / {fw})."""
+_AGENT_TEMPLATES[
+    "react"
+] = '''"""ReAct agent -- {name} ({pattern} / {provider} / {fw})."""
 
 from __future__ import annotations
 
@@ -74,7 +76,9 @@ root_agent = build_root_agent()
 
 # Swarm -----------------------------------------------------------------------
 
-_AGENT_TEMPLATES["swarm"] = '''"""Swarm agent -- {name} ({pattern} / {provider} / {fw})."""
+_AGENT_TEMPLATES[
+    "swarm"
+] = '''"""Swarm agent -- {name} ({pattern} / {provider} / {fw})."""
 
 from __future__ import annotations
 
@@ -152,7 +156,9 @@ root_agent = build_root_agent()
 
 # Planner-Executor ------------------------------------------------------------
 
-_AGENT_TEMPLATES["planner-executor"] = '''"""Planner-Executor agent -- {name} ({pattern} / {provider} / {fw})."""
+_AGENT_TEMPLATES[
+    "planner-executor"
+] = '''"""Planner-Executor agent -- {name} ({pattern} / {provider} / {fw})."""
 
 from __future__ import annotations
 
@@ -220,7 +226,9 @@ root_agent = build_root_agent()
 
 # Reflection ------------------------------------------------------------------
 
-_AGENT_TEMPLATES["reflection"] = '''"""Reflection agent -- {name} ({pattern} / {provider} / {fw})."""
+_AGENT_TEMPLATES[
+    "reflection"
+] = '''"""Reflection agent -- {name} ({pattern} / {provider} / {fw})."""
 
 from __future__ import annotations
 
@@ -350,7 +358,9 @@ root_agent = build_root_agent()
 
 # Sequential ------------------------------------------------------------------
 
-_AGENT_TEMPLATES["sequential"] = '''"""Sequential agent -- {name} ({pattern} / {provider} / {fw})."""
+_AGENT_TEMPLATES[
+    "sequential"
+] = '''"""Sequential agent -- {name} ({pattern} / {provider} / {fw})."""
 
 from __future__ import annotations
 

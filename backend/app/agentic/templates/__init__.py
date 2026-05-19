@@ -7,6 +7,17 @@ from pathlib import Path
 from app.agentic.config import AgentConfig
 from app.agentic.patterns import PATTERN_REGISTRY
 
+PROVIDER_ENV_VARS = {
+    "openai": ("OPENAI_API_KEY", "OPENAI_BASE_URL"),
+    "gemini": ("GEMINI_API_KEY", "GEMINI_BASE_URL"),
+    "anthropic": ("ANTHROPIC_API_KEY", "ANTHROPIC_BASE_URL"),
+    "groq": ("GROQ_API_KEY", "GROQ_BASE_URL"),
+    "openrouter": ("OPENROUTER_API_KEY", "OPENROUTER_BASE_URL"),
+    "azure-openai": ("AZURE_OPENAI_API_KEY", "AZURE_OPENAI_ENDPOINT"),
+    "ollama": ("OLLAMA_API_KEY", "OLLAMA_BASE_URL"),
+    "openai-compatible": ("OPENAI_COMPATIBLE_API_KEY", "OPENAI_COMPATIBLE_BASE_URL"),
+}
+
 
 def generate_project(config: AgentConfig, output_dir: Path) -> Path:
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -30,7 +41,7 @@ def generate_project(config: AgentConfig, output_dir: Path) -> Path:
         full_path.write_text(content)
 
     _write_config(config, output_dir / "configs" / "agent.yaml")
-    _write_env_example(output_dir)
+    _write_env_example(output_dir, config)
     _write_main(output_dir, config)
 
     return output_dir
@@ -38,6 +49,9 @@ def generate_project(config: AgentConfig, output_dir: Path) -> Path:
 
 def _write_config(config: AgentConfig, path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
+    api_key_env, base_url_env = PROVIDER_ENV_VARS.get(
+        config.provider.type.value, PROVIDER_ENV_VARS["openai"]
+    )
     content = f"""agent:
   name: {config.name}
   description: "{config.description}"
@@ -45,8 +59,9 @@ def _write_config(config: AgentConfig, path: Path) -> None:
 provider:
   type: {config.provider.type.value}
   model: {config.provider.model}
-  api_key: ${{PROVIDER_API_KEY}}
+  api_key_env: {api_key_env}
   base_url: {config.provider.base_url}
+  base_url_env: {base_url_env}
   temperature: {config.provider.temperature}
 
 orchestration:
@@ -61,13 +76,19 @@ memory:
     path.write_text(content)
 
 
-def _write_env_example(output_dir: Path) -> None:
-    env = """# Provider API keys (uncomment as needed)
-PROVIDER_API_KEY=
-OPENAI_API_KEY=
-GEMINI_API_KEY=
-ANTHROPIC_API_KEY=
-GROQ_API_KEY=
+def _write_env_example(output_dir: Path, config: AgentConfig) -> None:
+    api_key_env, base_url_env = PROVIDER_ENV_VARS.get(
+        config.provider.type.value, PROVIDER_ENV_VARS["openai"]
+    )
+    env_lines = [
+        f"# Provider: {config.provider.type.value}",
+        f"{api_key_env}=",
+    ]
+    if config.provider.base_url:
+        env_lines.append(f"{base_url_env}={config.provider.base_url}")
+    env = (
+        "\n".join(env_lines)
+        + """
 
 # Memory
 DATABASE_URL=
@@ -76,6 +97,7 @@ DATABASE_URL=
 LANGFUSE_PUBLIC_KEY=
 LANGFUSE_SECRET_KEY=
 """
+    )
     (output_dir / ".env.example").write_text(env)
 
 

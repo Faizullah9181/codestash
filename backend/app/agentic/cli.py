@@ -66,10 +66,13 @@ def _load_config() -> AgentConfig:
 
 
 def _save_config(config: AgentConfig) -> None:
-    CONFIG_FILE.write_text(yaml.dump(json.loads(config.model_dump_json()), default_flow_style=False))
+    CONFIG_FILE.write_text(
+        yaml.dump(json.loads(config.model_dump_json()), default_flow_style=False)
+    )
 
 
 # ── Init ──────────────────────────────────────────────────────────────────────
+
 
 @app.command()
 def init(force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing config")):
@@ -86,7 +89,9 @@ def init(force: bool = typer.Option(False, "--force", "-f", help="Overwrite exis
             model=typer.prompt("Model", default="gpt-4o"),
         ),
         orchestration=OrchestrationConfig(
-            framework=OrchestrationFramework(typer.prompt("Orchestration framework", default="langchain")),
+            framework=OrchestrationFramework(
+                typer.prompt("Orchestration framework", default="langchain")
+            ),
         ),
         pattern=PatternConfig(
             type=PatternType(typer.prompt("Pattern type", default="react")),
@@ -98,12 +103,17 @@ def init(force: bool = typer.Option(False, "--force", "-f", help="Overwrite exis
 
 # ── Providers ─────────────────────────────────────────────────────────────────
 
+
 @providers_app.command(name="add")
 def providers_add(
-    provider_type: str = typer.Argument(..., help="Provider type: openai, gemini, anthropic, groq, ollama, openai-compatible"),
+    provider_type: str = typer.Argument(
+        ..., help="Provider type: openai, gemini, anthropic, groq, ollama, openai-compatible"
+    ),
     model: str = typer.Option("", "--model", "-m", help="Model name"),
     api_key: str = typer.Option("", "--api-key", "-k", help="API key"),
-    base_url: str = typer.Option("", "--base-url", "-u", help="Base URL for OpenAI-compatible endpoints"),
+    base_url: str = typer.Option(
+        "", "--base-url", "-u", help="Base URL for OpenAI-compatible endpoints"
+    ),
 ):
     """Add or configure an LLM provider."""
     config = _load_config()
@@ -118,7 +128,10 @@ def providers_add(
         type=ptype,
         model=model or typer.prompt("Model", default="gpt-4o"),
         api_key=api_key or typer.prompt("API key", default=""),
-        base_url=base_url or (typer.prompt("Base URL", default="") if ptype == ProviderType.OPENAI_COMPATIBLE else ""),
+        base_url=base_url
+        or (
+            typer.prompt("Base URL", default="") if ptype == ProviderType.OPENAI_COMPATIBLE else ""
+        ),
     )
     _save_config(config)
     typer.echo(f"✓ Provider set to {ptype.value} ({config.provider.model})")
@@ -136,9 +149,12 @@ def providers_list():
 
 # ── Orchestration ─────────────────────────────────────────────────────────────
 
+
 @orchestration_app.command(name="use")
 def orchestration_use(
-    framework: str = typer.Argument(..., help="Framework: langchain, langgraph, openai-agents, google-adk, crewai, strands"),
+    framework: str = typer.Argument(
+        ..., help="Framework: langchain, langgraph, openai-agents, google-adk, crewai, strands"
+    ),
 ):
     """Select the orchestration framework."""
     try:
@@ -156,9 +172,12 @@ def orchestration_use(
 
 # ── Pattern ───────────────────────────────────────────────────────────────────
 
+
 @pattern_app.command(name="use")
 def pattern_use(
-    pattern: str = typer.Argument(..., help="Pattern: react, reflection, planner-executor, rag, swarm, sequential, ..."),
+    pattern: str = typer.Argument(
+        ..., help="Pattern: react, reflection, planner-executor, rag, swarm, sequential, ..."
+    ),
 ):
     """Select the agentic design pattern."""
     try:
@@ -176,6 +195,7 @@ def pattern_use(
 
 # ── Run ───────────────────────────────────────────────────────────────────────
 
+
 @app.command()
 def run(
     task: str = typer.Argument(..., help="The task or prompt to run"),
@@ -188,6 +208,7 @@ def run(
 
 async def _run_agent(config: AgentConfig, task: str, stream: bool) -> None:
     from app.agentic.agent import Agent
+
     agent = Agent.from_config(config.name, config)
     if stream:
         async for chunk in agent.stream(task):
@@ -199,6 +220,7 @@ async def _run_agent(config: AgentConfig, task: str, stream: bool) -> None:
 
 
 # ── Dev ───────────────────────────────────────────────────────────────────────
+
 
 @app.command()
 def dev():
@@ -214,6 +236,7 @@ def dev():
 
 async def _dev_loop(config: AgentConfig) -> None:
     from app.agentic.agent import Agent
+
     agent = Agent.from_config(config.name, config)
     while True:
         try:
@@ -243,6 +266,7 @@ async def _dev_loop(config: AgentConfig) -> None:
 
 # ── Inspect ───────────────────────────────────────────────────────────────────
 
+
 @app.command()
 def inspect():
     """Inspect current project configuration."""
@@ -251,6 +275,7 @@ def inspect():
 
 
 # ── Create ────────────────────────────────────────────────────────────────────
+
 
 @app.command()
 def create(
@@ -285,9 +310,12 @@ def _list_tree(path: Path, prefix: str = "") -> None:
 
 # ── MCP ───────────────────────────────────────────────────────────────────────
 
+
 @mcp_app.command(name="add")
 def mcp_add(
-    server: str = typer.Argument(..., help="MCP server: filesystem, github, postgres, brave-search, memory, puppeteer"),
+    server: str = typer.Argument(
+        ..., help="MCP server: filesystem, github, postgres, brave-search, memory, puppeteer"
+    ),
 ):
     """Add an MCP server to the project."""
     from app.agentic.mcp import MCP_SERVER_TEMPLATES
@@ -299,12 +327,14 @@ def mcp_add(
 
     config = _load_config()
     template = MCP_SERVER_TEMPLATES[server]
-    config.mcp.servers.append({
-        "name": template.name,
-        "command": template.command,
-        "args": template.args,
-        "env": template.env,
-    })
+    config.mcp.servers.append(
+        {
+            "name": template.name,
+            "command": template.command,
+            "args": template.args,
+            "env": template.env,
+        }
+    )
     _save_config(config)
     typer.echo(f"✓ MCP server '{server}' added")
 
@@ -323,10 +353,12 @@ def mcp_list():
 
 def _get_mcp_templates() -> list[str]:
     from app.agentic.mcp import MCP_SERVER_TEMPLATES
+
     return list(MCP_SERVER_TEMPLATES.keys())
 
 
 # ── Graph ─────────────────────────────────────────────────────────────────────
+
 
 @app.command()
 def graph():
@@ -342,12 +374,13 @@ def graph():
 │  Pattern:       {config.pattern.type.value:<23} │
 │  Memory:        {config.memory.backend.value:<23} │
 │  MCP Servers:   {len(config.mcp.servers):<23} │
-│  Telemetry:     {'enabled' if config.telemetry.enabled else 'disabled':<23} │
+│  Telemetry:     {"enabled" if config.telemetry.enabled else "disabled":<23} │
 └─────────────────────────────────────────┘
 """)
 
 
 # ── Entry Point ───────────────────────────────────────────────────────────────
+
 
 def main():
     app()

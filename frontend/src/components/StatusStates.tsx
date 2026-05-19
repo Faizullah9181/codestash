@@ -3,13 +3,15 @@
  * Mirrors F433's StatusStates pattern for consistent UX across pages.
  */
 
-import { Loader2, AlertCircle, Inbox, ChevronDown } from "lucide-react";
+import { Loader2, AlertCircle, ChevronDown, RefreshCw } from "lucide-react";
 
 export function LoadingSpinner({ label = "Loading..." }: { label?: string }) {
   return (
-    <div className="flex items-center justify-center gap-3 py-20 text-gray-400">
-      <Loader2 className="w-5 h-5 animate-spin" />
-      <span className="text-sm">{label}</span>
+    <div className="flex flex-col items-center justify-center gap-4 py-20 text-[var(--text-secondary)]">
+      <div className="w-12 h-12 rounded-2xl bg-[var(--accent-dim)] flex items-center justify-center">
+        <Loader2 className="w-6 h-6 text-[var(--accent)] animate-spin" />
+      </div>
+      <span className="text-sm font-medium">{label}</span>
     </div>
   );
 }
@@ -22,12 +24,17 @@ export function ErrorBox({
   onRetry?: () => void;
 }) {
   return (
-    <div className="card flex flex-col items-center gap-3 py-10 text-center">
-      <AlertCircle className="w-8 h-8 text-red-400" />
-      <p className="text-sm text-red-300">{message}</p>
+    <div className="card p-8 flex flex-col items-center gap-4 text-center">
+      <div className="w-12 h-12 rounded-2xl bg-red-500/10 flex items-center justify-center">
+        <AlertCircle className="w-6 h-6 text-red-400" />
+      </div>
+      <div>
+        <p className="font-semibold text-[var(--text)]">Something went wrong</p>
+        <p className="text-sm text-[var(--text-secondary)] mt-1">{message}</p>
+      </div>
       {onRetry && (
-        <button onClick={onRetry} className="btn-secondary text-xs mt-2">
-          Try Again
+        <button onClick={onRetry} className="btn-secondary mt-2">
+          <RefreshCw className="w-4 h-4" /> Try Again
         </button>
       )}
     </div>
@@ -36,13 +43,13 @@ export function ErrorBox({
 
 export function EmptyState({
   message = "Nothing here yet",
-  icon = <Inbox className="w-8 h-8" />,
+  icon,
 }: {
   message?: string;
   icon?: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col items-center justify-center py-20 text-gray-500 gap-2">
+    <div className="flex flex-col items-center justify-center py-20 text-[var(--text-secondary)] gap-2">
       {icon}
       <p className="text-sm">{message}</p>
     </div>
@@ -60,9 +67,13 @@ export function LoadMoreButton({
     <button
       onClick={onClick}
       disabled={loading}
-      className="btn-secondary w-full flex items-center justify-center gap-2"
+      className="btn-secondary w-full flex items-center justify-center gap-2 py-3"
     >
-      {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ChevronDown className="w-4 h-4" />}
+      {loading ? (
+        <Loader2 className="w-4 h-4 animate-spin" />
+      ) : (
+        <ChevronDown className="w-4 h-4" />
+      )}
       {loading ? "Loading…" : "Load more"}
     </button>
   );
