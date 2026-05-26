@@ -150,7 +150,7 @@ python3 .agent/skill.update.py bump <name>   # bump patch version
 | **skill-forge** | Guides the user through creating a new Agent Skill from scratch. Covers SKILL.md structure, frontmatter, and methodology. Triggers when you want to author, design, or write a new skill. |
 | **skill-scaffold** | Creates a new agent skill with the required frontmatter plus optional reference files (`REFERENCE.md`, `EXAMPLES.md`, `scripts/`). Gathers requirements, drafts the skill, and validates it against description constraints. Triggers when you want to save a workflow as a reusable skill. |
 | **test-cycle** | Guides test-driven development through public interfaces rather than implementation internals. Enforces planning, tracer-bullet approach, and incremental RED-GREEN-REFACTOR cycles. Triggers when writing new features with tests, or when tests are entangled with internal details. |
-| **tf-add** | Scaffolds and wires Terraform resources and modules for any cloud provider. The agent creates resource files, connects outputs across modules, sets up remote state, and writes tests. Triggers when adding Terraform resources, scaffolding modules, or building CI/CD pipelines for Terraform. |
+| **tf-add** | Generates and wires Terraform resources and modules for any cloud provider. The agent creates resource files, connects outputs across modules, sets up remote state, and writes tests. Triggers when adding Terraform resources, generating modules, or building CI/CD pipelines for Terraform. |
 
 #### Synced Community Skills
 
@@ -170,7 +170,7 @@ Skills are prompt-based and context-aware. When you ask the agent to do somethin
 - Saying "debug this" activates **bug-hunt** and the agent follows its structured diagnosis loop
 - Saying "break this feature into issues" activates **feature-split** and produces ranked vertical-slice issues
 - Saying "review the architecture" activates **arch-review** and scans for coupling and deepening opportunities
-- Saying "add a Terraform resource for S3" activates **tf-add** and scaffolds the module, variables, and outputs
+- Saying "add a Terraform resource for S3" activates **tf-add** and generates the module, variables, and outputs
 
 No manual activation needed. Just describe what you want, and the right skill's process kicks in.
 

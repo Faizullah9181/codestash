@@ -153,11 +153,11 @@ docker compose up --build       # db :5432, backend :8000, frontend :5173
 | Skill | What it does |
 |---|---|
 | `tf-add` | Add or wire Terraform resources (DigitalOcean, generic) |
-| `skill-forge` | Create new agent skills with SKILL.md scaffolding |
+| `skill-forge` | Create new agent skills with SKILL.md generation |
 | `bug-hunt` | Systematic bug diagnosis via HITL loop |
 | `doc-drill` | Grill an agent on a codebase area using CONTEXT.md + ADRs |
 | `arch-review` | Find shallow modules and propose deepening via parallel sub-agents |
-| `agent-setup` | Scaffold `## Agent skills` block + `docs/agents/` config for this repo |
+| `agent-setup` | Generate `## Agent skills` block + `docs/agents/` config for this repo |
 | `test-cycle` | TDD workflow: planning → tracer bullet → incremental RED→GREEN→REFACTOR |
 | `feature-split` | Convert a feature/PRD into vertical-slice issues with dependency order |
 | `issue-triage` | Triage an issue through state machine → label + AGENT-BRIEF rewrite |

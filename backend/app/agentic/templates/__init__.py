@@ -1,4 +1,4 @@
-"""Template generator — scaffold complete agentic AI projects."""
+"""Template generator — generate complete agentic AI projects."""
 
 from __future__ import annotations
 
