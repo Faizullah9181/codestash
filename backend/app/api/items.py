@@ -46,7 +46,7 @@ class ItemResponse(SchemaBase):
 # ── Routes ───────────────────────────────────────────────────────
 
 
-@router.get("/", response_model=PaginatedResponse[ItemResponse])
+@router.get("", response_model=PaginatedResponse[ItemResponse])
 async def list_items(
     page: int = Query(1, ge=1),
     limit: int = Query(20, ge=1, le=100),
@@ -63,7 +63,7 @@ async def get_item(item_id: int, db: AsyncSession = Depends(get_db)):
     return await item_service.get_item(db, item_id)
 
 
-@router.post("/", response_model=ItemResponse, status_code=201)
+@router.post("", response_model=ItemResponse, status_code=201)
 async def create_item(body: ItemCreate, db: AsyncSession = Depends(get_db)):
     """Create a new item."""
     return await item_service.create_item(db, body.model_dump(exclude_unset=True))
