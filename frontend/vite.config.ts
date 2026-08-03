@@ -15,8 +15,10 @@ export default defineConfig(({ mode }) => {
       host: true,
       port: 5173,
       proxy: {
+        // Resolved by the dev server, not the browser: inside Docker this must be
+        // the backend service name, not localhost.
         "/api": {
-          target: env.VITE_API_URL || "http://localhost:8000",
+          target: env.DEV_PROXY_TARGET || "http://localhost:8000",
           changeOrigin: true,
         },
       },
