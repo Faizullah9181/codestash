@@ -14,6 +14,7 @@ import re
 import shutil
 import subprocess
 import sys
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -521,6 +522,36 @@ def _dump_simple_yaml(value: object, indent: int = 0) -> str:
     return "\n".join(lines)
 
 
+MIT_LICENSE_TEMPLATE = """MIT License
+
+Copyright (c) {year} {holder}
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+"""
+
+
+def _write_license(dst: Path, name: str) -> None:
+    holder = os.environ.get("COPYRIGHT_HOLDER") or name.replace("-", " ").title()
+    text = MIT_LICENSE_TEMPLATE.format(year=datetime.now().year, holder=holder)
+    (dst / "LICENSE").write_text(text, encoding="utf-8")
+
+
 def _write_gitignore(dst: Path) -> None:
     (dst / ".gitignore").write_text("""__pycache__/
 *.py[cod]
@@ -857,6 +888,7 @@ def _interactive_create_project() -> None:
     _copy_file(DOCKER_COMPOSE_SRC, output_dir / "docker-compose.yml", r)
     _copy_file(AGENTS_MD_SRC, output_dir / "AGENTS.md", r)
     _write_gitignore(output_dir)
+    _write_license(output_dir, name)
     _write_readme(output_dir, name, provider, model, fw, pattern, mcp_servers)
 
     _write_agentic_yaml(
@@ -1032,6 +1064,10 @@ make format  # ruff format
 `terraform/` holds DigitalOcean modules. Before going to production: restrict `CORS_ORIGINS`,
 set `ENV=production` to disable the docs endpoint, move secrets into a managed store, and point
 `VITE_API_URL` at the public API origin.
+
+## License
+
+Released under the [MIT License](LICENSE).
 """
     (output_dir / "README.md").write_text(content, encoding="utf-8")
 

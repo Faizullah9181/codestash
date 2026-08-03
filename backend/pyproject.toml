@@ -3,6 +3,7 @@ name = "codestash-backend"
 version = "0.1.0"
 description = "FastAPI backend + Agentic AI Framework"
 requires-python = ">=3.12"
+license = "MIT"
 dependencies = [
   "fastapi>=0.115.0",
   "uvicorn[standard]>=0.30.0",
