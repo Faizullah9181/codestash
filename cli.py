@@ -8,12 +8,22 @@ Run without arguments for interactive mode:
 from __future__ import annotations
 
 import json
+import importlib
 import os
 import re
 import shutil
 import subprocess
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+from agent_module import (  # noqa: E402
+    FRAMEWORK_LABELS,
+    PATTERN_SPECS,
+    PROVIDER_LABELS,
+    render_agent_package,
+)
 
 ROOT = Path(__file__).resolve().parent
 BACKEND_SRC = ROOT / "backend"
@@ -106,6 +116,58 @@ ORCHESTRATION_FRAMEWORKS = [
     "strands",
 ]
 
+AGENTIC_BASE_DEPENDENCIES = [
+    "chromadb>=0.5.0",
+    "aiosqlite>=0.20.0",
+]
+
+# The LangChain family ships one distribution per provider binding.
+LANGCHAIN_PROVIDER_PACKAGES = {
+    "gemini": "langchain-google-genai>=2.0.0",
+    "anthropic": "langchain-anthropic>=0.3.0",
+}
+LANGCHAIN_OPENAI_PACKAGE = "langchain-openai>=0.2.0"
+
+# Strands publishes provider bindings as extras of a single distribution.
+STRANDS_PROVIDER_EXTRAS = {
+    "gemini": "gemini",
+    "anthropic": "anthropic",
+    "ollama": "ollama",
+}
+
+# CrewAI routes a recognised model prefix to a native provider class and raises
+# ImportError if that provider's extra is missing. Prefixes it does not recognise
+# (only ``groq/`` here) fall through to LiteLLM instead.
+CREWAI_PROVIDER_EXTRAS = {
+    "anthropic": "[anthropic]",
+    "gemini": "[google-genai]",
+    "azure-openai": "[azure-ai-inference]",
+    "groq": "[litellm]",
+}
+
+
+def _agent_dependencies(framework: str, provider: str) -> list[str]:
+    """Return the SDK packages the generated agent module imports."""
+    if framework == "google-adk":
+        if provider == "gemini":
+            return ["google-adk>=1.0.0"]
+        # ADK reaches every non-Gemini provider through LiteLLM.
+        return ["google-adk>=1.0.0", "litellm>=1.55.0"]
+    if framework in {"langchain", "langgraph"}:
+        core = "langchain>=0.3.0" if framework == "langchain" else "langgraph>=0.2.0"
+        return [core, LANGCHAIN_PROVIDER_PACKAGES.get(provider, LANGCHAIN_OPENAI_PACKAGE)]
+    if framework == "crewai":
+        # openai / openrouter / ollama / openai-compatible all resolve to a native
+        # provider backed by the openai SDK, which CrewAI already depends on.
+        return [f"crewai{CREWAI_PROVIDER_EXTRAS.get(provider, '')}>=1.0.0"]
+    if framework == "openai-agents":
+        if provider in {"gemini", "anthropic"}:
+            return ["openai-agents[litellm]>=0.1.0"]
+        return ["openai-agents>=0.1.0"]
+    extra = STRANDS_PROVIDER_EXTRAS.get(provider, "openai")
+    return [f"strands-agents[{extra}]>=1.0.0"]
+
+
 PATTERNS = [
     "react",
     "planner-executor",
@@ -145,6 +207,8 @@ IGNORE_PATTERNS = {
     ".DS_Store",
     "*.pyc",
     ".git",
+    # Dependencies are tailored per project, so the template lock file never matches.
+    "uv.lock",
 }
 
 REPLACEABLE_SUFFIXES = {
@@ -168,18 +232,21 @@ REPLACEABLE_SUFFIXES = {
 
 def _load_config() -> dict:
     try:
-        import yaml
-    except ImportError:
+        yaml = importlib.import_module("yaml")
+    except ModuleNotFoundError:
         return {}
     if CONFIG_FILE.exists():
-        return yaml.safe_load(CONFIG_FILE.read_text()) or {}
+        return yaml.safe_load(CONFIG_FILE.read_text(encoding="utf-8")) or {}
     return {}
 
 
 def _save_config(config: dict) -> None:
-    import yaml
-
-    CONFIG_FILE.write_text(yaml.dump(config, default_flow_style=False))
+    try:
+        yaml = importlib.import_module("yaml")
+    except ModuleNotFoundError:
+        CONFIG_FILE.write_text(_dump_simple_yaml(config) + "\n", encoding="utf-8")
+        return
+    CONFIG_FILE.write_text(yaml.dump(config, default_flow_style=False), encoding="utf-8")
 
 
 def _prompt(text: str, default: str = "") -> str:
@@ -234,7 +301,7 @@ def _confirm(text: str, default: bool = True) -> bool:
     return result in ("y", "yes")
 
 
-def _ignored(path: str, names: list[str]) -> set[str]:
+def _ignored(_path: str, _names: list[str]) -> set[str]:
     return IGNORE_PATTERNS
 
 
@@ -247,7 +314,7 @@ def _copy_dir(src: Path, dst: Path, r: dict[str, str]) -> None:
             fp = Path(root) / f
             if fp.suffix in REPLACEABLE_SUFFIXES:
                 try:
-                    content = fp.read_text()
+                    content = fp.read_text(encoding="utf-8")
                 except UnicodeDecodeError:
                     continue
                 changed = False
@@ -256,7 +323,7 @@ def _copy_dir(src: Path, dst: Path, r: dict[str, str]) -> None:
                         content = content.replace(old, new)
                         changed = True
                 if changed:
-                    fp.write_text(content)
+                    fp.write_text(content, encoding="utf-8")
 
 
 def _copy_file(src: Path, dst: Path, r: dict[str, str]) -> None:
@@ -338,6 +405,14 @@ def _backend_env_content(
         _env_line("AGENT_ORCHESTRATION_FRAMEWORK", fw),
         _env_line("AGENT_PATTERN", pattern),
         _env_line("AGENT_MCP_SERVERS", ",".join(mcp_servers)),
+        _env_line("AGENTOPS_ENABLED", "false"),
+        _env_line("AGENTOPS_API_KEY", ""),
+        _env_line("AGENTOPS_CAPTURE_CONTENT", "false"),
+        _env_line("AGENTOPS_TAGS", "codestash,fastapi"),
+        _env_line("AGENTOPS_ENVIRONMENT", "development"),
+        _env_line("AGENTOPS_EXPORT_FLUSH_INTERVAL", "1000"),
+        _env_line("AGENTOPS_MAX_WAIT_TIME", "5000"),
+        _env_line("AGENTOPS_MAX_QUEUE_SIZE", "512"),
         "",
         f"# Provider: {provider}",
         _env_line(api_key_env, "" if example else api_key),
@@ -476,11 +551,7 @@ def _print_tree(path: Path, prefix: str = "", depth: int = 0) -> None:
     if depth >= 2:
         return
     items = sorted(
-        [
-            p
-            for p in path.iterdir()
-            if p.name not in IGNORE_PATTERNS and p.name != ".gitignore"
-        ],
+        [p for p in path.iterdir() if p.name not in IGNORE_PATTERNS and p.name != ".gitignore"],
         key=lambda p: (not p.is_dir(), p.name),
     )
     for i, item in enumerate(items[:12]):
@@ -493,369 +564,6 @@ def _print_tree(path: Path, prefix: str = "", depth: int = 0) -> None:
 
 
 # -- Backend generation -------------------------------------------------------
-
-PROVIDER_NAMES = {
-    "openai": "OPENAI",
-    "gemini": "GEMINI",
-    "anthropic": "ANTHROPIC",
-    "groq": "GROQ",
-    "ollama": "OLLAMA",
-    "openai-compatible": "OPENAI_COMPATIBLE",
-    "openrouter": "OPENROUTER",
-    "azure-openai": "AZURE_OPENAI",
-}
-
-PATTERN_NAMES = {
-    "react": "REACT",
-    "planner-executor": "PLANNER_EXECUTOR",
-    "reflection": "REFLECTION",
-    "rag": "RAG",
-    "swarm": "SWARM",
-    "sequential": "SEQUENTIAL",
-    "reviewer-critic": "REVIEWER_CRITIC",
-    "hierarchical": "HIERARCHICAL",
-    "autonomous": "AUTONOMOUS",
-    "tool-use": "TOOL_USE",
-    "planning": "PLANNING",
-    "parallel": "PARALLEL",
-    "debate": "DEBATE",
-    "coordinator": "COORDINATOR",
-    "blackboard": "BLACKBOARD",
-}
-
-
-def _generate_config_py(
-    name: str,
-    provider: str,
-    pattern: str,
-    model: str,
-    fw: str,
-    mcp_servers: list[str],
-    base_url: str,
-) -> str:
-    prov_name = PROVIDER_NAMES.get(provider, "OPENAI")
-    pat_name = PATTERN_NAMES.get(pattern, "REACT")
-    api_key_env = _provider_api_key_env(provider)
-    base_url_env = _provider_base_url_env(provider)
-    effective_base_url = base_url or _provider_base_url_default(provider)
-    mcp_servers_repr = repr(mcp_servers)
-    azure_extra = (
-        '{"api_version": _env("AZURE_OPENAI_API_VERSION", "2024-02-15-preview")}'
-        if provider == "azure-openai"
-        else "{}"
-    )
-    return f'''"""Agent configuration for {pattern} pattern with {provider} provider."""
-
-from __future__ import annotations
-
-import os
-from dataclasses import dataclass, field
-from enum import Enum
-from pathlib import Path
-from typing import Any
-
-PROJECT_ROOT = Path(__file__).resolve().parents[3]
-BACKEND_ROOT = PROJECT_ROOT / "backend"
-PROVIDER_API_KEY_ENV = "{api_key_env}"
-PROVIDER_BASE_URL_ENV = "{base_url_env}"
-DEFAULT_BASE_URL = "{effective_base_url}"
-
-
-def _load_dotenv(path: Path) -> None:
-    if not path.exists():
-        return
-    for raw_line in path.read_text().splitlines():
-        line = raw_line.strip()
-        if not line or line.startswith("#") or "=" not in line:
-            continue
-        key, value = line.split("=", 1)
-        key = key.strip()
-        value = value.strip()
-        if len(value) >= 2 and value[0] == value[-1] and value[0] in {{"'", '"'}}:
-            value = value[1:-1]
-        if key and key not in os.environ:
-            os.environ[key] = value
-
-
-_load_dotenv(BACKEND_ROOT / ".env")
-_load_dotenv(PROJECT_ROOT / ".env")
-
-
-def _env(name: str, default: str = "") -> str:
-    return os.environ.get(name, default)
-
-
-def _first_env(names: tuple[str, ...], default: str = "") -> str:
-    for name in names:
-        value = os.environ.get(name)
-        if value:
-            return value
-    return default
-
-
-def _float_env(name: str, default: float) -> float:
-    try:
-        return float(os.environ.get(name, default))
-    except (TypeError, ValueError):
-        return default
-
-
-def _int_env(name: str, default: int) -> int:
-    try:
-        return int(os.environ.get(name, default))
-    except (TypeError, ValueError):
-        return default
-
-
-def _csv_env(name: str, default: list[str]) -> list[str]:
-    value = os.environ.get(name)
-    if value is None:
-        return default
-    return [item.strip() for item in value.split(",") if item.strip()]
-
-
-class ProviderType(str, Enum):
-    {prov_name} = "{provider}"
-
-
-class PatternType(str, Enum):
-    {pat_name} = "{pattern}"
-
-
-@dataclass
-class AgentConfig:
-    name: str = field(default_factory=lambda: _env("AGENT_NAME", "{name}"))
-    provider_type: ProviderType = ProviderType.{prov_name}
-    model: str = field(default_factory=lambda: _env("AGENT_MODEL", "{model}"))
-    api_key: str = field(
-        default_factory=lambda: _first_env((PROVIDER_API_KEY_ENV, "PROVIDER_API_KEY"), "")
-    )
-    base_url: str = field(
-        default_factory=lambda: _first_env((PROVIDER_BASE_URL_ENV, "AGENT_BASE_URL"), DEFAULT_BASE_URL)
-    )
-    temperature: float = field(default_factory=lambda: _float_env("AGENT_TEMPERATURE", 0.7))
-    max_tokens: int = field(default_factory=lambda: _int_env("AGENT_MAX_TOKENS", 4096))
-    extra: dict[str, Any] = field(
-        default_factory=lambda: {{
-            "orchestration_framework": _env("AGENT_ORCHESTRATION_FRAMEWORK", "{fw}"),
-            "pattern": _env("AGENT_PATTERN", "{pattern}"),
-            "mcp_servers": _csv_env("AGENT_MCP_SERVERS", {mcp_servers_repr}),
-            **{azure_extra},
-        }}
-    )
-'''
-
-
-def _memory_module_py() -> str:
-    return '''"""Memory system."""
-
-from __future__ import annotations
-
-from dataclasses import dataclass, field
-from typing import Any
-
-
-@dataclass
-class MemoryEntry:
-    role: str
-    content: str
-    metadata: dict[str, Any] = field(default_factory=dict)
-
-
-class Memory:
-    def __init__(self) -> None:
-        self._entries: list[MemoryEntry] = []
-
-    async def add(self, entry: MemoryEntry) -> None:
-        self._entries.append(entry)
-        if len(self._entries) > 1000:
-            self._entries = self._entries[-1000:]
-
-    async def get(self, limit: int = 10) -> list[MemoryEntry]:
-        return self._entries[-limit:]
-
-    async def search(self, query: str, limit: int = 5) -> list[MemoryEntry]:
-        q = query.lower()
-        return [e for e in self._entries if q in e.content.lower()][-limit:]
-
-    async def clear(self) -> None:
-        self._entries.clear()
-'''
-
-
-def _mcp_module_py(mcp_servers: list[str]) -> str:
-    servers_repr = repr(mcp_servers)
-    return f'''"""MCP integration."""
-
-from __future__ import annotations
-
-from dataclasses import dataclass, field
-from typing import Any
-
-ENABLED_SERVERS: list[str] = {servers_repr}
-
-
-@dataclass
-class MCPServer:
-    name: str
-    command: str = ""
-    args: list[str] = field(default_factory=list)
-    env: dict[str, str] = field(default_factory=dict)
-    enabled: bool = True
-'''
-
-
-def _telemetry_module_py() -> str:
-    return '''"""Telemetry and tracing."""
-
-from __future__ import annotations
-
-import time
-from contextlib import asynccontextmanager
-from dataclasses import dataclass, field
-from typing import Any, AsyncIterator
-
-
-@dataclass
-class TraceSpan:
-    name: str
-    start_time: float
-    end_time: float = 0
-    metadata: dict[str, Any] = field(default_factory=dict)
-    error: str | None = None
-
-
-class Tracer:
-    def __init__(self) -> None:
-        self._traces: list[TraceSpan] = []
-
-    @asynccontextmanager
-    async def span(self, name: str, metadata: dict[str, Any] | None = None) -> AsyncIterator[TraceSpan]:
-        span = TraceSpan(name=name, start_time=time.monotonic(), metadata=metadata or {})
-        try:
-            yield span
-        except Exception as e:
-            span.error = str(e)
-            raise
-        finally:
-            span.end_time = time.monotonic()
-
-    def get_traces(self) -> list[TraceSpan]:
-        return self._traces
-
-    def clear(self) -> None:
-        self._traces.clear()
-'''
-
-
-def _strands_module_py() -> str:
-    return '''"""Strands orchestration framework.
-
-Strands is a concurrent-agent orchestration pattern where multiple
-parallel "strands" of thought / execution are woven together by a
-coordinator.  Each strand explores a different angle of the task,
-then the coordinator merges results into a final answer.
-"""
-
-from __future__ import annotations
-
-import asyncio
-from dataclasses import dataclass
-from typing import Any, Callable, Coroutine
-
-from app.agentic.memory import Memory
-
-
-@dataclass
-class Strand:
-    """A single parallel execution strand."""
-
-    name: str
-    prompt: str
-    result: str | None = None
-    error: str | None = None
-
-
-class StrandsOrchestrator:
-    """Weave parallel strands of agent reasoning into one answer."""
-
-    def __init__(self, max_strands: int = 5) -> None:
-        self.max_strands = max_strands
-        self.memory = Memory()
-
-    async def weave(
-        self,
-        task: str,
-        executor: Callable[[list[dict[str, str]]], Coroutine[Any, Any, str]],
-        system_prompt: str | None = None,
-    ) -> str:
-        """Decompose *task* into strands, execute in parallel, weave results."""
-        strands = await self._plan(task, executor, system_prompt)
-        strands = await self._execute(strands, executor, system_prompt)
-        return await self._synthesise(task, strands, executor, system_prompt)
-
-    async def _plan(
-        self,
-        task: str,
-        executor: Callable[[list[dict[str, str]]], Coroutine[Any, Any, str]],
-        system_prompt: str | None,
-    ) -> list[Strand]:
-        plan_prompt = (
-            "Break the following task into 2-4 independent sub-tasks that can "
-            "be explored in parallel.  Return ONLY a numbered list, one per line.\\n\\n"
-            f"Task: {{task}}"
-        )
-        msgs: list[dict[str, str]] = [{{"role": "user", "content": plan_prompt}}]
-        if system_prompt:
-            msgs.insert(0, {{"role": "system", "content": system_prompt}})
-        raw = await executor(msgs)
-        strands: list[Strand] = []
-        for line in raw.splitlines():
-            stripped = line.lstrip(" -0123456789.#*•\\t")
-            if stripped:
-                strands.append(Strand(name=f"strand-{{len(strands)+1}}", prompt=stripped))
-        return strands[: self.max_strands]
-
-    async def _execute(
-        self,
-        strands: list[Strand],
-        executor: Callable[[list[dict[str, str]]], Coroutine[Any, Any, str]],
-        system_prompt: str | None,
-    ) -> list[Strand]:
-        async def _run_one(s: Strand) -> Strand:
-            msgs: list[dict[str, str]] = [{{"role": "user", "content": s.prompt}}]
-            if system_prompt:
-                msgs.insert(0, {{"role": "system", "content": system_prompt}})
-            try:
-                s.result = await executor(msgs)
-            except Exception as exc:
-                s.error = str(exc)
-            return s
-        return list(await asyncio.gather(*[_run_one(s) for s in strands]))
-
-    async def _synthesise(
-        self,
-        task: str,
-        strands: list[Strand],
-        executor: Callable[[list[dict[str, str]]], Coroutine[Any, Any, str]],
-        system_prompt: str | None,
-    ) -> str:
-        findings = ""
-        for s in strands:
-            if s.result:
-                findings += f"\\n### {{s.name}}\\n{{s.result}}\\n"
-            elif s.error:
-                findings += f"\\n### {{s.name}} (error)\\n{{s.error}}\\n"
-        synth_prompt = (
-            "Below are results from parallel explorations of a task. "
-            "Synthesise them into ONE concise final answer.\\n\\n"
-            f"Original task: {{task}}\\n{{findings}}\\n\\nFINAL ANSWER:"
-        )
-        msgs: list[dict[str, str]] = [{{"role": "user", "content": synth_prompt}}]
-        if system_prompt:
-            msgs.insert(0, {{"role": "system", "content": system_prompt}})
-        return await executor(msgs)
-'''
 
 
 def _write_backend(
@@ -931,36 +639,17 @@ def _write_backend(
         if src.exists():
             _copy_file(src, svc_dir / fname, r)
 
+    # Reuse the shared agentic runtime, then fuse the selection into one agent package.
+    _copy_dir(BACKEND_SRC / "app" / "agentic", agentic_dir, r)
+    _write_agent_package(agentic_dir, name, provider, fw, pattern)
+
     tests_dir = be / "tests"
     tests_dir.mkdir(exist_ok=True)
     src_test = BACKEND_SRC / "tests" / "test_health.py"
     if src_test.exists():
         _copy_file(src_test, tests_dir / "test_health.py", r)
 
-    (agentic_dir / "__init__.py").write_text(f'"""Agentic AI agent for {name}."""\n')
-    (agentic_dir / "config.py").write_text(
-        _generate_config_py(name, provider, pattern, model, fw, mcp_servers, base_url)
-    )
-    (agentic_dir / "agent.py").write_text(
-        _generate_agent_py(name, pattern, provider, fw)
-    )
-
-    memory_dir = agentic_dir / "memory"
-    memory_dir.mkdir(exist_ok=True)
-    (memory_dir / "__init__.py").write_text(_memory_module_py())
-
-    mcp_dir = agentic_dir / "mcp"
-    mcp_dir.mkdir(exist_ok=True)
-    (mcp_dir / "__init__.py").write_text(_mcp_module_py(mcp_servers))
-
-    tele_dir = agentic_dir / "telemetry"
-    tele_dir.mkdir(exist_ok=True)
-    (tele_dir / "__init__.py").write_text(_telemetry_module_py())
-
-    if fw == "strands":
-        strands_dir = agentic_dir / "strands"
-        strands_dir.mkdir(exist_ok=True)
-        (strands_dir / "__init__.py").write_text(_strands_module_py())
+    _write_agent_dependencies(be / "pyproject.toml", fw, provider)
 
 
 # -- Agent templates per pattern (self-contained, no external provider/orch imports) --
@@ -977,9 +666,7 @@ def _setup_agent_dir(
     agent_dir = output_dir / ".agent"
     agent_dir.mkdir(parents=True, exist_ok=True)
 
-    (agent_dir / "skill.update.py").write_text(
-        (AGENT_SRC / "skill.update.py").read_text()
-    )
+    (agent_dir / "skill.update.py").write_text((AGENT_SRC / "skill.update.py").read_text())
     _write_filtered_skills_json(agent_dir, provider, fw)
 
     core_skills = {
@@ -1016,7 +703,7 @@ def _setup_agent_dir(
     commands_dir.mkdir(exist_ok=True)
 
 
-def _write_filtered_skills_json(agent_dir: Path, provider: str, fw: str) -> None:
+def _write_filtered_skills_json(agent_dir: Path, _provider: str, fw: str) -> None:
     try:
         all_skills = json.loads((AGENT_SRC / "skills.json").read_text())
     except (FileNotFoundError, json.JSONDecodeError):
@@ -1026,7 +713,7 @@ def _write_filtered_skills_json(agent_dir: Path, provider: str, fw: str) -> None
         "fastapi/fastapi": True,
         "agentscope-ai/agentscope": fw in ("agentscope",),
         "nextlevelbuilder/ui-ux-pro-max": False,
-        "sickn33/antigravity-awesome-skills": True,
+        "sickn33/antigravity-awesome-skills": False,
     }
 
     filtered = [s for s in all_skills if relevance.get(s.get("slug", ""), False)]
@@ -1113,9 +800,7 @@ def _interactive_create_project() -> None:
 
     output_dir = Path(output).resolve() / name
     if output_dir.exists() and any(output_dir.iterdir()):
-        if not _confirm(
-            f"Directory '{output_dir}' already exists. Overwrite?", default=False
-        ):
+        if not _confirm(f"Directory '{output_dir}' already exists. Overwrite?", default=False):
             print("  Aborted.\n")
             return
 
@@ -1145,6 +830,7 @@ def _interactive_create_project() -> None:
         "codestash-backend": name,
         "codestash_backend": name.replace("-", "_"),
         "CodeStash Starterpack": name.title(),
+        "CodeStash": name.title(),
         "codestash-db": f"{name}-db",
         "codestash-frontend": f"{name}-frontend",
         "codestash-node": f"{name}-node",
@@ -1171,6 +857,7 @@ def _interactive_create_project() -> None:
     _copy_file(DOCKER_COMPOSE_SRC, output_dir / "docker-compose.yml", r)
     _copy_file(AGENTS_MD_SRC, output_dir / "AGENTS.md", r)
     _write_gitignore(output_dir)
+    _write_readme(output_dir, name, provider, model, fw, pattern, mcp_servers)
 
     _write_agentic_yaml(
         output_dir,
@@ -1194,7 +881,7 @@ def _interactive_create_project() -> None:
     print("\n  Syncing AI skills...")
     skill_py = output_dir / ".agent" / "skill.update.py"
     if skill_py.exists():
-        subprocess.run([sys.executable, str(skill_py), "sync"], cwd=str(output_dir))
+        subprocess.run([sys.executable, str(skill_py), "sync"], cwd=str(output_dir), check=False)
 
     print(f"\n  Project created: {output_dir}")
     _print_tree(output_dir)
@@ -1208,15 +895,181 @@ def _interactive_create_project() -> None:
     print("    docker compose up --build\n")
 
 
+TOPOLOGY_SUMMARIES = {
+    "single": "a single tool-using agent",
+    "pipeline": "a pipeline where each role hands its output to the next",
+    "loop": "a draft/critique loop that runs for a fixed number of rounds",
+    "fanout": "parallel branches whose results are merged by a final agent",
+    "supervisor": "a supervisor that briefs and delegates to specialist agents",
+}
+
+
+def _write_readme(
+    output_dir: Path,
+    name: str,
+    provider: str,
+    model: str,
+    framework: str,
+    pattern: str,
+    mcp_servers: list[str],
+) -> None:
+    """Write a README describing the stack this project was actually generated with."""
+    spec = PATTERN_SPECS[pattern]
+    roles = spec["roles"]
+    title = name.replace("-", " ").replace("_", " ").title()
+    key_env = _provider_api_key_env(provider)
+    roles_line = " → ".join(role for role, _ in roles) if roles else "single agent"
+    mcp_line = ", ".join(f"`{s}`" for s in mcp_servers) if mcp_servers else "none configured"
+
+    content = f"""# {title}
+
+FastAPI + React + PostgreSQL application with a built-in agent runtime.
+
+## Stack
+
+| Piece | Choice |
+| --- | --- |
+| Backend | FastAPI, SQLAlchemy asyncio, asyncpg |
+| Frontend | React 19, TypeScript, Vite |
+| Database | PostgreSQL 16 |
+| LLM provider | {PROVIDER_LABELS[provider]} (`{model}`) |
+| Orchestration | {FRAMEWORK_LABELS[framework]} |
+| Agentic pattern | `{pattern}` — {TOPOLOGY_SUMMARIES[spec["topology"]]} |
+| Agent roles | {roles_line} |
+| MCP servers | {mcp_line} |
+
+## Quick Start
+
+```bash
+cp backend/.env.example backend/.env   # set {key_env}
+cp frontend/.env.example frontend/.env
+docker compose up --build
+```
+
+| Service | URL |
+| --- | --- |
+| Frontend | http://localhost:5173 |
+| API | http://localhost:8000 |
+| API docs | http://localhost:8000/docs |
+
+`VITE_API_URL` is resolved by the browser. `DEV_PROXY_TARGET` is resolved by the Vite dev server
+and is overridden to `http://backend:8000` by docker compose.
+
+## Agent
+
+The agent lives in `backend/app/agentic/agent/agent.py` and is written directly against the
+{FRAMEWORK_LABELS[framework]} SDK — there is no wrapper layer or provider switch to unpick.
+
+```python
+from app.agentic.agent import root_agent
+
+result = await root_agent.run("Summarise the latest release notes")
+print(result.final_output, result.steps, result.duration_ms)
+
+async for chunk in root_agent.stream("Draft a changelog"):
+    print(chunk, end="")
+```
+
+Three seams to edit:
+
+| Function / class | Responsibility |
+| --- | --- |
+| `build_model(config)` | Binds {PROVIDER_LABELS[provider]} to {FRAMEWORK_LABELS[framework]} |
+| `build_runtime(config)` | Assembles the `{pattern}` topology |
+| `Agent` | Adapts the runtime to `run()` / `stream()` / `chat()` |
+
+Check it over HTTP:
+
+```bash
+curl localhost:8000/api/agent              # provider, framework, pattern, telemetry
+curl "localhost:8000/api/agent?probe=true" # also round-trips one call to the model
+```
+
+## Layout
+
+```text
+backend/app/
+|-- agentic/        # agent runtime, config, mcp, memory, telemetry
+|-- api/            # HTTP layer
+|-- services/       # business logic
+|-- repositories/   # data access + models
+`-- main.py
+```
+
+The backend follows a Controller → Service → Repository → Model flow. `app/api/items.py` is the
+reference resource: copy it, its service and its repository when adding a new entity.
+
+## API
+
+| Method | Path | Description |
+| --- | --- | --- |
+| `GET` | `/api/health` | Liveness probe |
+| `GET` | `/api/status` | Version plus database connectivity |
+| `GET` | `/api/agent` | Agent runtime configuration |
+| `GET` | `/api/items` | Paginated list — `page`, `limit`, optional `status` |
+| `POST` | `/api/items` | Create an item |
+| `GET` | `/api/items/{{id}}` | Fetch one item |
+| `PATCH` | `/api/items/{{id}}` | Partial update |
+| `DELETE` | `/api/items/{{id}}` | Delete an item |
+
+Timestamps are serialised as UTC ISO-8601 with a trailing `Z`.
+
+## Development
+
+```bash
+cd backend && make install && make dev    # API on :8000
+cd frontend && npm install && npm run dev # UI on :5173
+```
+
+```bash
+make test    # pytest
+make lint    # ruff check
+make format  # ruff format
+```
+
+## Deployment
+
+`terraform/` holds DigitalOcean modules. Before going to production: restrict `CORS_ORIGINS`,
+set `ENV=production` to disable the docs endpoint, move secrets into a managed store, and point
+`VITE_API_URL` at the public API origin.
+"""
+    (output_dir / "README.md").write_text(content, encoding="utf-8")
+
+
 def _write_agentic_yaml(output_dir: Path, project_name: str, config: dict) -> None:
     config = {"name": project_name, **config}
     try:
-        import yaml
-    except ImportError:
+        yaml = importlib.import_module("yaml")
+    except ModuleNotFoundError:
         content = _dump_simple_yaml(config) + "\n"
     else:
         content = yaml.dump(config, default_flow_style=False, sort_keys=False)
-    (output_dir / "agentic.yaml").write_text(content)
+    (output_dir / "agentic.yaml").write_text(content, encoding="utf-8")
+
+
+def _write_agent_dependencies(pyproject_path: Path, framework: str, provider: str) -> None:
+    """Rewrite the ``agentic`` extra with the SDKs this selection actually imports."""
+    content = pyproject_path.read_text(encoding="utf-8")
+    marker = "agentic = [\n"
+    start = content.find(marker)
+    if start == -1:
+        return
+    end = content.find("]\n", start)
+    if end == -1:
+        return
+    dependencies = AGENTIC_BASE_DEPENDENCIES + _agent_dependencies(framework, provider)
+    block = marker + "".join(f'  "{dependency}",\n' for dependency in dependencies)
+    pyproject_path.write_text(content[:start] + block + content[end:], encoding="utf-8")
+
+
+def _write_agent_package(
+    agentic_dir: Path, name: str, provider: str, framework: str, pattern: str
+) -> None:
+    """Fuse the selected provider, framework and pattern into ``agentic/agent/``."""
+    agent_dir = agentic_dir / "agent"
+    agent_dir.mkdir(parents=True, exist_ok=True)
+    for filename, content in render_agent_package(name, provider, framework, pattern).items():
+        (agent_dir / filename).write_text(content, encoding="utf-8")
 
 
 # -- View Configuration --------------------------------------------------------
@@ -1289,127 +1142,6 @@ def _menu() -> None:
 
 def main() -> None:
     _menu()
-
-
-# -- New agent templates (F433 pattern: factory + orchestrator class + singleton) --
-
-PROVIDER_IMPORTS = {
-    "openai": "from openai import AsyncOpenAI",
-    "gemini": "from google import genai",
-    "anthropic": "from anthropic import AsyncAnthropic",
-    "groq": "from openai import AsyncOpenAI",
-    "ollama": "from openai import AsyncOpenAI",
-    "openai-compatible": "from openai import AsyncOpenAI",
-    "openrouter": "from openai import AsyncOpenAI",
-    "azure-openai": "from openai import AsyncOpenAI",
-}
-
-PROVIDER_INIT = {
-    "openai": "        self._client = AsyncOpenAI(api_key=self._config.api_key or None)",
-    "gemini": "        self._client = genai.Client(api_key=self._config.api_key)",
-    "anthropic": "        self._client = AsyncAnthropic(api_key=self._config.api_key)",
-    "groq": '        self._client = AsyncOpenAI(api_key=self._config.api_key, base_url=self._config.base_url or "https://api.groq.com/openai/v1")',
-    "ollama": '        self._client = AsyncOpenAI(api_key="ollama", base_url=self._config.base_url or "http://localhost:11434/v1")',
-    "openai-compatible": '        self._client = AsyncOpenAI(api_key=self._config.api_key or "local", base_url=self._config.base_url or None)',
-    "openrouter": '        self._client = AsyncOpenAI(api_key=self._config.api_key, base_url=self._config.base_url or "https://openrouter.ai/api/v1")',
-    "azure-openai": "        self._client = AsyncOpenAI(api_key=self._config.api_key, base_url=self._config.base_url)",
-}
-
-COMPAT_NEEDS_LITELLM = {
-    ("google-adk", "openai"): True,
-    ("google-adk", "anthropic"): True,
-    ("google-adk", "groq"): True,
-    ("google-adk", "ollama"): True,
-    ("openai-agents", "gemini"): True,
-    ("openai-agents", "anthropic"): True,
-}
-
-
-def _needs_litellm(fw: str, provider: str) -> bool:
-    return COMPAT_NEEDS_LITELLM.get((fw, provider), False)
-
-
-def _compat_block(fw: str, provider: str) -> str:
-    return f"""
-
-# Compatibility: {fw} does not natively support {provider}.
-# Using LiteLLM as a bridge. Install: pip install litellm
-import litellm
-litellm.set_verbose = False
-"""
-
-
-def _compat_setup() -> str:
-    return """
-        self._litellm_model = f"openai/{{self._config.model}}\""""
-
-
-def _generate_agent_py(name: str, pattern: str, provider: str, fw: str) -> str:
-    import sys
-
-    sys.path.insert(0, str(ROOT))
-    from agent_templates import _AGENT_TEMPLATES
-
-    template = _AGENT_TEMPLATES.get(pattern, _AGENT_TEMPLATES["react"])
-    import_line = PROVIDER_IMPORTS.get(provider, PROVIDER_IMPORTS["openai"])
-    init_line = PROVIDER_INIT.get(provider, PROVIDER_INIT["openai"])
-    needs_compat = _needs_litellm(fw, provider)
-    compat_block = _compat_block(fw, provider) if needs_compat else ""
-    compat_setup = _compat_setup() if needs_compat else ""
-
-    # Inject strands-specific code when framework is strands
-    if fw == "strands":
-        imports_extra = "\nfrom app.agentic.strands import StrandsOrchestrator"
-        init_extra = "\n        self._strands = StrandsOrchestrator(max_strands=4)"
-        methods_extra = (
-            "\n"
-            "    # ── Strands-weave (parallel exploration) ──────────────────────\n"
-            "\n"
-            "    async def weave(self, task: str) -> str:\n"
-            '        """Run the task through the Strands orchestrator for parallel exploration."""\n'
-            '        await self.memory.add(MemoryEntry(role="user", content=task))\n'
-            '        system_prompt = "You are a focused reasoning strand. Answer concisely and thoroughly."\n'
-            "\n"
-            "        async def _exec(msgs: list[dict]) -> str:\n"
-            "            return await self._call(msgs)\n"
-            "\n"
-            "        result = await self._strands.weave(task, _exec, system_prompt=system_prompt)\n"
-            '        await self.memory.add(MemoryEntry(role="assistant", content=result))\n'
-            "        return result\n"
-        )
-        # Inject import after the base provider_import
-        import_line = import_line + imports_extra
-        # Inject strands init after provider_init
-        init_line = init_line + init_extra
-        # Inject weave method before the class closing — we modify template post-format
-    else:
-        methods_extra = ""
-
-    result = template.format(
-        name=name,
-        pattern=pattern,
-        provider=provider,
-        fw=fw,
-        provider_import=import_line,
-        provider_init=init_line,
-        compat_block=compat_block,
-        compat_setup=compat_setup,
-        class_name=name.replace("-", " ").title().replace(" ", ""),
-    )
-
-    if fw == "strands":
-        # Add the docstring mention of strands
-        result = result.replace(
-            f"""Root orchestrator for {name} -- {pattern} pattern.""",
-            f"""Root orchestrator for {name} -- {pattern} + strands pattern.""",
-        )
-        # Append the weave method before root_agent singleton
-        result = result.replace(
-            "\n\nroot_agent = build_root_agent()",
-            methods_extra + "\n\nroot_agent = build_root_agent()",
-        )
-
-    return result
 
 
 if __name__ == "__main__":
