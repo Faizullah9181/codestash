@@ -8,7 +8,7 @@ import { Pencil, Trash2, Plus, Search, Loader2, X, Package } from "lucide-react"
 import { itemsApi, type Item, type ItemCreate } from "../lib/api";
 import { usePaginatedApi } from "../hooks";
 import { FormInput, FormSelect, FormTextarea } from "../components/Form";
-import { LoadingSpinner, ErrorBox, EmptyState, LoadMoreButton } from "../components/StatusStates";
+import { LoadingSpinner, ErrorBox, LoadMoreButton } from "../components/StatusStates";
 
 const STATUS_OPTIONS = [
   { value: "active", label: "Active" },

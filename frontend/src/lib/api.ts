@@ -77,6 +77,28 @@ export const healthApi = {
   status: () => apiGet<{ status: string; version: string; database: string }>("/api/status"),
 };
 
+export interface AgentInfo {
+  name: string;
+  provider: { type: string; model: string; base_url: string; configured: boolean };
+  orchestration: { framework: string };
+  pattern: { type: string };
+  memory: { backend: string };
+  telemetry: { enabled: boolean; langfuse_public_key: boolean; langfuse_secret_key: boolean; langfuse_host: string };
+  agentops: {
+    enabled: boolean;
+    configured: boolean;
+    capture_content: boolean;
+    default_tags: string[];
+    environment: string;
+    error?: string | null;
+  };
+  probe?: { ok: boolean; reply?: string; error?: string } | null;
+}
+
+export const agentApi = {
+  info: (probe = false) => apiGet<AgentInfo>(`/api/agent${probe ? "?probe=true" : ""}`),
+};
+
 export const itemsApi = {
   list: (page = 1, limit = 20, status?: string) => {
     const params = new URLSearchParams({ page: String(page), limit: String(limit) });

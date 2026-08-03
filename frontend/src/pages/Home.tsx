@@ -1,11 +1,22 @@
 /**
- * Home page — dashboard overview with quick stats + recent items.
+ * Home page — dashboard overview with quick stats and agent runtime details.
  */
 
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { Activity, Database, Plus, Server, ArrowRight, Sparkles, ExternalLink, Zap, Box } from "lucide-react";
-import { healthApi } from "../lib/api";
+import {
+  Activity,
+  ArrowRight,
+  Box,
+  Cpu,
+  Database,
+  ExternalLink,
+  Server,
+  ShieldCheck,
+  Sparkles,
+  Zap,
+} from "lucide-react";
+import { agentApi, healthApi, type AgentInfo } from "../lib/api";
 
 const STAT_CARDS = [
   {
@@ -13,9 +24,9 @@ const STAT_CARDS = [
     label: "API Status",
     icon: Server,
     color: "emerald",
-    value: (s: any, err: string | null) =>
+    value: (s: { status?: string } | null, err: string | null) =>
       err ? "Unreachable" : s?.status === "ok" ? "Healthy" : "Checking…",
-    ok: (s: any) => s?.status === "ok",
+    ok: (s: { status?: string } | null) => s?.status === "ok",
     err: (err: string | null) => !!err,
   },
   {
@@ -23,19 +34,25 @@ const STAT_CARDS = [
     label: "Database",
     icon: Database,
     color: "blue",
-    value: (s: any, err: string | null) =>
+    value: (s: { database?: string } | null, err: string | null) =>
       err ? "—" : s?.database === "connected" ? "Connected" : "Disconnected",
-    ok: (s: any) => s?.database === "connected",
+    ok: (s: { database?: string } | null) => s?.database === "connected",
   },
   {
     key: "version",
     label: "Version",
     icon: Activity,
     color: "purple",
-    value: (s: any) => s?.version ?? "…",
+    value: (s: { version?: string } | null, _err: string | null) => s?.version ?? "…",
     ok: () => true,
   },
 ];
+
+const CARD_ACCENTS: Record<string, { box: string; icon: string }> = {
+  emerald: { box: "bg-emerald-500/10", icon: "text-emerald-400" },
+  blue: { box: "bg-blue-500/10", icon: "text-blue-400" },
+  purple: { box: "bg-purple-500/10", icon: "text-purple-400" },
+};
 
 const QUICK_LINKS = [
   {
@@ -58,18 +75,27 @@ const QUICK_LINKS = [
 
 export function Home() {
   const [status, setStatus] = useState<{ status: string; version: string; database: string } | null>(null);
+  const [agent, setAgent] = useState<AgentInfo | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    healthApi
-      .status()
-      .then(setStatus)
-      .catch((e) => setError(e.message));
+    let alive = true;
+
+    Promise.all([healthApi.status(), agentApi.info()])
+      .then(([systemStatus, agentInfo]) => {
+        if (!alive) return;
+        setStatus(systemStatus);
+        setAgent(agentInfo);
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "Failed to load dashboard"));
+
+    return () => {
+      alive = false;
+    };
   }, []);
 
   return (
     <div className="space-y-10">
-      {/* Hero */}
       <div className="animate-fade-in">
         <div className="flex items-center gap-3 mb-3">
           <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[var(--accent)] to-blue-600 flex items-center justify-center shadow-[0_4px_16px_rgba(34,211,238,0.25)]">
@@ -82,31 +108,25 @@ export function Home() {
         </p>
       </div>
 
-      {/* System status */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4" style={{ animationDelay: "0.1s" }}>
+      {error && (
+        <div className="card card-surface p-4 text-sm text-red-300 border-red-500/20 bg-red-500/10">
+          {error}
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 animate-fade-in" style={{ animationDelay: "0.1s" }}>
         {STAT_CARDS.map(({ key, label, icon: Icon, color, value, ok, err }) => {
-          const colorMap: Record<string, string> = {
-            emerald: "shadow-emerald-500/10",
-            blue: "shadow-blue-500/10",
-            purple: "shadow-purple-500/10",
-          };
+          const accent = CARD_ACCENTS[color] ?? CARD_ACCENTS.blue;
+          const displayValue = value(status, error);
           return (
-            <div
-              key={key}
-              className="card card-glow p-5 flex items-center gap-4 animate-fade-in"
-            >
-              <div className={`w-11 h-11 rounded-xl bg-${color}-500/10 flex items-center justify-center shrink-0`}>
-                <Icon className={`w-5 h-5 text-${color}-400`} />
+            <div key={key} className="card card-surface card-glow p-5 flex items-center gap-4">
+              <div className={`w-11 h-11 rounded-xl ${accent.box} flex items-center justify-center shrink-0`}>
+                <Icon className={`w-5 h-5 ${accent.icon}`} />
               </div>
               <div className="min-w-0">
-                <p className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">
-                  {label}
-                </p>
-                <p className="font-semibold text-[var(--text)] mt-0.5 truncate">
-                  {value(status, error)}
-                </p>
+                <p className="text-xs font-medium text-[var(--text-secondary)] uppercase tracking-wider">{label}</p>
+                <p className="font-semibold text-[var(--text)] mt-0.5 truncate">{displayValue}</p>
               </div>
-              {/* Status dot */}
               <div className="ml-auto shrink-0">
                 <div
                   className={`w-2 h-2 rounded-full ${
@@ -123,8 +143,59 @@ export function Home() {
         })}
       </div>
 
-      {/* Quick links */}
-      <div className="card p-6 md:p-8 animate-fade-in" style={{ animationDelay: "0.2s" }}>
+      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4 animate-fade-in" style={{ animationDelay: "0.15s" }}>
+        <div className="card card-surface p-6 lg:col-span-3">
+          <div className="flex items-center gap-2 mb-4">
+            <Cpu className="w-5 h-5 text-[var(--accent)]" />
+            <h2 className="text-lg font-bold text-[var(--text)]">Agent Runtime</h2>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="rounded-xl border border-[var(--border)] bg-black/20 p-4">
+              <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--text-secondary)]">Provider</p>
+              <p className="mt-2 font-semibold text-[var(--text)]">{agent?.provider.type ?? "—"}</p>
+              <p className="text-sm text-[var(--text-secondary)] mt-1">{agent?.provider.model ?? "Configure AGENT_MODEL"}</p>
+            </div>
+            <div className="rounded-xl border border-[var(--border)] bg-black/20 p-4">
+              <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--text-secondary)]">Orchestration</p>
+              <p className="mt-2 font-semibold text-[var(--text)]">{agent?.orchestration.framework ?? "—"}</p>
+              <p className="text-sm text-[var(--text-secondary)] mt-1">Pattern: {agent?.pattern.type ?? "react"}</p>
+            </div>
+          </div>
+          <div className="mt-4 rounded-xl border border-[var(--border)] bg-black/20 p-4">
+            <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--text-secondary)]">Probe</p>
+            <p className="mt-2 text-sm text-[var(--text-secondary)]">
+              {agent?.probe?.ok
+                ? `Probe reply: ${agent.probe.reply}`
+                : agent?.probe?.error ?? "No probe run. Add provider credentials and call /api/agent?probe=true."}
+            </p>
+          </div>
+        </div>
+
+        <div className="card card-surface p-6 lg:col-span-2">
+          <div className="flex items-center gap-2 mb-4">
+            <ShieldCheck className="w-5 h-5 text-emerald-400" />
+            <h2 className="text-lg font-bold text-[var(--text)]">AgentOps</h2>
+          </div>
+          <div className="space-y-3 text-sm">
+            <div className="rounded-xl border border-[var(--border)] bg-black/20 p-4">
+              <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--text-secondary)]">Status</p>
+              <p className="mt-2 font-semibold text-[var(--text)]">{agent?.agentops.enabled ? "Enabled" : "Disabled"}</p>
+            </div>
+            <div className="rounded-xl border border-[var(--border)] bg-black/20 p-4">
+              <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--text-secondary)]">Configured</p>
+              <p className="mt-2 font-semibold text-[var(--text)]">{agent?.agentops.configured ? "Yes" : "No"}</p>
+            </div>
+            <div className="rounded-xl border border-[var(--border)] bg-black/20 p-4">
+              <p className="text-[10px] uppercase tracking-[0.24em] text-[var(--text-secondary)]">Tags</p>
+              <p className="mt-2 font-semibold text-[var(--text)]">
+                {agent?.agentops.default_tags.join(", ") || "codestash, fastapi"}
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="card card-surface p-6 md:p-8 animate-fade-in" style={{ animationDelay: "0.2s" }}>
         <div className="flex items-center gap-2 mb-6">
           <Zap className="w-5 h-5 text-[var(--accent)]" />
           <h2 className="text-lg font-bold text-[var(--text)]">Quick Start</h2>
@@ -137,9 +208,7 @@ export function Home() {
               <Comp
                 key={title}
                 {...(extraProps as any)}
-                className="group flex items-center gap-4 p-4 rounded-xl border border-[var(--border)]
-                  hover:border-[rgba(255,255,255,0.15)] hover:bg-[var(--card-hover)]
-                  transition-all duration-200"
+                className="group flex items-center gap-4 p-4 rounded-xl border border-[var(--border)] hover:border-[rgba(255,255,255,0.15)] hover:bg-[var(--card-hover)] transition-all duration-200"
               >
                 <div className={`w-10 h-10 rounded-xl ${bg} flex items-center justify-center shrink-0`}>
                   <Icon className={`w-4 h-4 ${color}`} />
