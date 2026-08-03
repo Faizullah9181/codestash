@@ -7,10 +7,10 @@ Provides:
 - Common request/response patterns
 """
 
-from datetime import datetime
-from typing import Generic, TypeVar
+from datetime import datetime, timezone
+from typing import Any, Generic, TypeVar
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, field_serializer
 
 T = TypeVar("T")
 
@@ -23,6 +23,13 @@ class SchemaBase(BaseModel):
     id: int
     created_at: datetime
     updated_at: datetime
+
+    @field_serializer("created_at", "updated_at")
+    def _as_utc_iso(self, value: datetime) -> str:
+        """Timestamps are stored naive-UTC; tag them so clients don't read them as local."""
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
 
 
 class CreateBase(BaseModel):
@@ -55,3 +62,16 @@ class HealthResponse(BaseModel):
     status: str
     version: str
     database: str = "disconnected"
+
+
+class AgentResponse(BaseModel):
+    """Agent runtime and observability summary."""
+
+    name: str
+    provider: dict[str, Any]
+    orchestration: dict[str, Any]
+    pattern: dict[str, Any]
+    memory: dict[str, Any]
+    telemetry: dict[str, Any]
+    agentops: dict[str, Any]
+    probe: dict[str, Any] | None = None
