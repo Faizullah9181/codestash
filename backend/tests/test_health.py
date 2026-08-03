@@ -17,3 +17,13 @@ def test_root() -> None:
     data = response.json()
     assert "status" in data
     assert data["status"] == "running"
+
+
+def test_agent_info() -> None:
+    client = TestClient(app)
+    response = client.get("/api/agent")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["name"]
+    assert "provider" in data
+    assert "agentops" in data
