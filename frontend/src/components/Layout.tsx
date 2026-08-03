@@ -13,8 +13,6 @@ import {
   Menu,
   X,
   Sparkles,
-  Github,
-  ExternalLink,
 } from "lucide-react";
 
 const NAV_ITEMS = [
@@ -25,6 +23,7 @@ const NAV_ITEMS = [
 export function Layout() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const sidebarTranslate = mobileOpen ? "translate-x-0" : "-translate-x-full";
 
   return (
     <div className="app-shell flex min-h-screen bg-[var(--bg)]">
@@ -38,10 +37,7 @@ export function Layout() {
 
       {/* Sidebar */}
       <aside
-        className={`sidebar ${collapsed ? "w-[68px]" : "w-60"}
-          fixed top-0 left-0 h-full z-50
-          transition-all duration-300 ease-out
-          max-lg:${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}
+        className={`sidebar ${collapsed ? "w-[68px]" : "w-60"} fixed top-0 left-0 h-full z-50 transition-all duration-300 ease-out ${sidebarTranslate} lg:translate-x-0`}
       >
         {/* Logo area */}
         <div className="flex items-center gap-3 px-4 h-16 border-b border-[var(--border)]">
