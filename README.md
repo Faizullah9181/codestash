@@ -4,6 +4,7 @@
 [![Frontend](https://img.shields.io/badge/frontend-React%20%2B%20Vite-646CFF?style=flat-square)](https://vite.dev/)
 [![Database](https://img.shields.io/badge/database-PostgreSQL-336791?style=flat-square)](https://www.postgresql.org/)
 [![Infrastructure](https://img.shields.io/badge/infra-Terraform-844FBA?style=flat-square)](https://www.terraform.io/)
+[![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 
 CodeStash Starterpack is a production-minded full-stack starter kit for building modern web applications with FastAPI, React, TypeScript, PostgreSQL, Docker, Terraform, and GitHub Actions. It is intentionally generic, clean, and reusable, so you can turn it into a SaaS product, internal dashboard, CRUD platform, admin console, marketplace, automation tool, or domain-specific app without first deleting opinionated business logic.
 
@@ -397,4 +398,4 @@ CodeStash Starterpack is a strong base for full-stack web application developmen
 
 ## License
 
-Use this starter as the foundation for your own application. Add the license that matches your project before publishing or distributing it.
+Released under the [MIT License](LICENSE). Generated projects also ship with their own MIT `LICENSE` file, so you are free to use, modify, and distribute them commercially.
