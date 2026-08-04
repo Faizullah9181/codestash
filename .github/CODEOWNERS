@@ -1,0 +1,6 @@
+# Default owner for all repository changes.
+* @Faizullah9181
+
+# Keep automation and infrastructure changes explicitly owned.
+/.github/ @Faizullah9181
+/terraform/ @Faizullah9181
