@@ -14,8 +14,11 @@ It also ships an agent generator. `python3 cli.py` asks which LLM provider, orch
 and agentic pattern you want, then writes an agent module against that framework's **real SDK** —
 8 providers × 6 frameworks × 15 patterns, with only the chosen stack's dependencies installed.
 
+![CodeStash Starterpack architecture: user journey, FastAPI serving layer, agent orchestration layer, tools and integrations, data layer, Terraform infrastructure, and the GitHub Actions CI/CD pipeline](assets/architecture.png)
+
 ## Contents
 
+- [Architecture](#architecture)
 - [Tech Stack](#tech-stack)
 - [Quick Start](#quick-start)
 - [Generating a Project](#generating-a-project)
@@ -31,6 +34,21 @@ and agentic pattern you want, then writes an agent module against that framework
 - [CI/CD](#cicd)
 - [Production Checklist](#production-checklist)
 - [Best For](#best-for)
+
+## Architecture
+
+Seven layers, each independently replaceable. The agent orchestration layer is the only part the
+generator rewrites per selection; everything above and below it stays the same.
+
+| Layer | Responsibility |
+| --- | --- |
+| User journey | React + TypeScript pages, forms, and tables calling the API over REST |
+| API serving | FastAPI routers, Pydantic validation, auth, middleware, background tasks |
+| Agent orchestration | The generated `agent/` package — runtime, execution flow, memory and state |
+| Tools & integrations | MCP servers, search, scrapers, storage, and third-party connectors |
+| Data | PostgreSQL primary store, optional vector DB, cache, and file storage |
+| Infrastructure | DigitalOcean Terraform modules for DNS, load balancer, app, DB, backups |
+| CI/CD | GitHub Actions: lint, tests, build, security scan, registry push, deploy |
 
 ## Tech Stack
 
