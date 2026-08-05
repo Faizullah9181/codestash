@@ -20,12 +20,12 @@ and agentic pattern you want, then writes an agent module against that framework
 
 - [Architecture](#architecture)
 - [Tech Stack](#tech-stack)
-- [Quick Start](#quick-start)
 - [Generating a Project](#generating-a-project)
   - [Supported Providers](#supported-providers)
   - [Supported Frameworks](#supported-frameworks)
   - [Supported Patterns](#supported-patterns)
   - [Generated Agent Layout](#generated-agent-layout)
+- [Quick Start](#quick-start)
 - [Project Structure](#project-structure)
 - [API Reference](#api-reference)
 - [Local Development](#local-development)
@@ -64,68 +64,31 @@ generator rewrites per selection; everything above and below it stays the same.
 | Automation | GitHub Actions CI and Terraform validation |
 | Agent Tooling | Shared `backend/app/agentic` runtime, AgentOps telemetry, `.agent/skills`, `skill.update.py`, `skills.json` |
 
-## Quick Start
-
-### 1. Clone and Configure
-
-```bash
-git clone <your-repo-url>
-cd codestash-starterpack
-cp backend/.env.example backend/.env
-cp frontend/.env.example frontend/.env
-```
-
-Default local configuration:
-
-```bash
-# backend/.env
-APP_NAME=CodeStash API
-ENV=development
-DATABASE_URL=postgresql+asyncpg://codestash:codestash@db:5432/codestash
-CORS_ORIGINS=http://localhost:5173
-
-# frontend/.env
-VITE_API_URL=http://localhost:8000    # browser-facing, production builds only
-DEV_PROXY_TARGET=http://localhost:8000 # dev-server proxy target (compose overrides to http://backend:8000)
-
-# Optional observability
-AGENTOPS_ENABLED=false
-AGENTOPS_API_KEY=
-```
-
-> `VITE_API_URL` is resolved by the **browser**; `DEV_PROXY_TARGET` is resolved by the **Vite dev
-> server**. Inside Docker they differ, which is why they are two variables.
-
-### 2. Start the Full Stack
-
-```bash
-docker compose up --build
-```
-
-### 3. Open the App
-
-| Service | URL |
-| --- | --- |
-| Frontend | `http://localhost:5173` |
-| Backend API | `http://localhost:8000` |
-| API Docs | `http://localhost:8000/docs` |
-| PostgreSQL | `localhost:5432` |
-
 ## Generating a Project
 
+Start here. The CLI is the entry point — clone this repository, run the generator, then run the
+project it writes.
+
 ```bash
+git clone https://github.com/Faizullah9181/codestash-starterpack.git
+cd codestash-starterpack
 python3 cli.py
 ```
 
-The generator asks for a project name, an LLM provider, an orchestration framework, an agentic
-pattern and any MCP servers, then writes a complete repository. Only the stack you chose is
-shipped — there is no runtime `if framework == ...` switch and no unused provider adapters.
+The generator asks for a project name, an output directory, an LLM provider and model, an
+orchestration framework, an agentic pattern and any MCP servers, then writes a complete
+standalone repository. Only the stack you chose is shipped — there is no runtime
+`if framework == ...` switch and no unused provider adapters.
 
 Concretely, your answers decide three things:
 
 1. **`backend/app/agentic/agent/agent.py`** — generated against the real SDK of the framework you picked.
 2. **`backend/pyproject.toml`** — the `agentic` extra contains only the packages that stack needs.
 3. **`backend/.env`** — the provider's own environment variable names, pre-filled.
+
+You get back a full repository — backend, frontend, Terraform, CI workflows, `agentic.yaml`,
+an MIT `LICENSE`, a `.gitignore` and its own README. Continue with
+[Quick Start](#quick-start) to run it.
 
 ### Supported Providers
 
@@ -226,6 +189,60 @@ Or inspect the live configuration over HTTP:
 curl localhost:8000/api/agent              # provider, framework, pattern, telemetry
 curl "localhost:8000/api/agent?probe=true" # also round-trips one call to the model
 ```
+
+## Quick Start
+
+Applies to a generated project and to this repository itself.
+
+### 1. Configure
+
+```bash
+cd <your-generated-project>   # or: cd codestash-starterpack
+cp backend/.env.example backend/.env
+cp frontend/.env.example frontend/.env
+```
+
+Default local configuration:
+
+```bash
+# backend/.env
+APP_NAME=CodeStash API
+ENV=development
+DATABASE_URL=postgresql+asyncpg://codestash:codestash@db:5432/codestash
+CORS_ORIGINS=http://localhost:5173
+
+# frontend/.env
+VITE_API_URL=http://localhost:8000    # browser-facing, production builds only
+DEV_PROXY_TARGET=http://localhost:8000 # dev-server proxy target (compose overrides to http://backend:8000)
+
+# Optional observability
+AGENTOPS_ENABLED=false
+AGENTOPS_API_KEY=
+```
+
+> `VITE_API_URL` is resolved by the **browser**; `DEV_PROXY_TARGET` is resolved by the **Vite dev
+> server**. Inside Docker they differ, which is why they are two variables.
+
+Add the API key for the provider you selected during generation — the variable name is already
+listed in `backend/.env`.
+
+### 2. Start the Full Stack
+
+```bash
+docker compose up --build
+```
+
+First boot runs `uv sync` inside the backend container, so `/api/health` may return 500 for a
+few seconds before the dependencies finish installing.
+
+### 3. Open the App
+
+| Service | URL |
+| --- | --- |
+| Frontend | `http://localhost:5173` |
+| Backend API | `http://localhost:8000` |
+| API Docs | `http://localhost:8000/docs` |
+| PostgreSQL | `localhost:5432` |
 
 ## Project Structure
 
