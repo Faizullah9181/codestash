@@ -1,4 +1,4 @@
-# CodeStash Starterpack
+# CodeStash — FastAPI + React AI Agent Starter Kit
 
 [![Backend](https://img.shields.io/badge/backend-FastAPI-009688?style=flat-square)](https://fastapi.tiangolo.com/)
 [![Frontend](https://img.shields.io/badge/frontend-React%20%2B%20Vite-646CFF?style=flat-square)](https://vite.dev/)
@@ -6,7 +6,12 @@
 [![Infrastructure](https://img.shields.io/badge/infra-Terraform-844FBA?style=flat-square)](https://www.terraform.io/)
 [![License](https://img.shields.io/badge/license-MIT-green?style=flat-square)](LICENSE)
 
-CodeStash Starterpack is a production-minded full-stack starter kit for building modern web applications with FastAPI, React, TypeScript, PostgreSQL, Docker, Terraform, and GitHub Actions. It is intentionally generic, clean, and reusable, so you can turn it into a SaaS product, internal dashboard, CRUD platform, admin console, marketplace, automation tool, or domain-specific app without first deleting opinionated business logic.
+> This is a GitHub **template repository**. Click **Use this template** to create your own
+> repo from it, or clone it directly with the commands below.
+
+**CodeStash is a production-ready FastAPI + React + TypeScript + PostgreSQL boilerplate with a built-in AI agent generator.** It scaffolds a full-stack Python web application and, optionally, a working AI agent built against the real SDK of your chosen framework — LangChain, LangGraph, CrewAI, Google ADK, OpenAI Agents, or Strands Agents.
+
+Use it as a starting point for a SaaS product, internal dashboard, CRUD platform, admin console, marketplace, automation tool, AI agent backend, or any domain-specific app. It is intentionally generic, clean, and reusable, so you never begin by deleting someone else's business logic.
 
 It gives you the boring-but-critical foundation: an async API, typed frontend, reusable form and status components, paginated CRUD flow, PostgreSQL persistence, Docker Compose local development, DigitalOcean Terraform modules, CI checks, and 17 AI-powered agent skills that make coding assistants disciplined, project-aware, and consistently excellent.
 
@@ -70,8 +75,8 @@ Start here. The CLI is the entry point — clone this repository, run the genera
 project it writes.
 
 ```bash
-git clone https://github.com/Faizullah9181/codestash-starterpack.git
-cd codestash-starterpack
+git clone https://github.com/Faizullah9181/codestash.git
+cd codestash
 python3 cli.py
 ```
 
@@ -197,7 +202,7 @@ Applies to a generated project and to this repository itself.
 ### 1. Configure
 
 ```bash
-cd <your-generated-project>   # or: cd codestash-starterpack
+cd <your-generated-project>   # or: cd codestash
 cp backend/.env.example backend/.env
 cp frontend/.env.example frontend/.env
 ```
